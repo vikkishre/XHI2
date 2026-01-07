@@ -23,6 +23,9 @@
 #include "../lib/Tinkerbell/include/tinkerbell.h"
 #include "../lib/Transposition/include/transposition.h"
 
+// ZTM Handlers
+#include "api/ztm_handlers.h"
+
 // Event bus for WebSocket communications
 class EventBus {
 private:
@@ -132,6 +135,24 @@ struct SecurityMetrics {
 };
 
 struct AdaptiveMonitor {
+    SecurityMetrics metrics;
+    uint64_t lastSecurityBroadcast;
+};
+
+static AdaptiveMonitor gAdaptiveMonitor;
+
+struct NonceTracker { 
+    std::unordered_set<uint32_t> used; 
+    std::mutex mtx;
+    uint64_t startupTime;
+};
+
+static NonceTracker gNonceTracker;
+
+// Utility functions
+std::vector<uint8_t> hexToBytes(const std::string& hex) {
+    std::vector<uint8_t> bytes;
+    for (size_t i = 0; i < hex.length(); i += 2) {
     SecurityMetrics metrics;
     uint64_t lastSecurityBroadcast;
 };
@@ -867,8 +888,21 @@ void registerEventWS(crow::SimpleApp& app) {
                         return;
                     }
                 }
+                                // ZTM Message Handler dispatch
+                if (msg.contains("type")) {
+                    std::string ztm_type = msg["type"];
+                    auto broadcastFn = [](const nlohmann::json& m) { EventBus::broadcast(m); };
+                    if (dispatchZTMMessage(ztm_type, msg, conn, broadcastFn)) {
+                        log_info("ZTM handled: " + ztm_type);
+                        return;
+                    }
+                }
 
                 EventBus::broadcast(msg);
+
+                // Note: ZTM handlers are integrated via ztm_handlers.h
+                // Messages like ztm_activate_request, get_ztm_status, etc. 
+                // should be dispatched here if needed
 
             } catch (const std::exception& e) {
                 log_error("WebSocket JSON parse error: " + std::string(e.what()));

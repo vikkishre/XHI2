@@ -25,7 +25,7 @@
 #include "../lib/Salsa20/include/salsa20_impl.h"
 
 // Configuration
-#define SERVER_URL "http://10.199.35.115:8081"
+#define SERVER_URL "http://10.45.98.115:8081"
 #define WS_SERVER "192.168.230.103"  // WebSocket server IP
 #define WS_PORT 8081                 // WebSocket server port
 #define WS_PATH "/api/ws"            // WebSocket path

@@ -5,6 +5,7 @@ import './globals.css'
 import { WebSocketProvider } from '../context/WebSocketContext'
 import { PipelineProvider } from '../context/PipelineContext'
 import { ZeroTrustProvider } from '../context/ZeroTrustContext'
+import NormalModeAlerts from '../components/NormalModeAlerts'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -26,13 +27,14 @@ export default function RootLayout({
         <link rel="icon" href="/favicon.ico" />
       </head>
       <body className={`${inter.className} bg-gray-900 text-white antialiased`}>
-        <ZeroTrustProvider>
-          <WebSocketProvider>
+        <WebSocketProvider>
+          <ZeroTrustProvider>
             <PipelineProvider>
               {children}
+              <NormalModeAlerts />
             </PipelineProvider>
-          </WebSocketProvider>
-        </ZeroTrustProvider>
+          </ZeroTrustProvider>
+        </WebSocketProvider>
       </body>
     </html>
   )

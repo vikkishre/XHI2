@@ -186,14 +186,21 @@
   },
   "recipes": {
     "CHAOS_ONLY": {
-      "algorithms": ["LFSR", "Tinkerbell", "Transposition"],
+      "algorithms": [
+        "LFSR",
+        "Tinkerbell",
+        "Transposition"
+      ],
       "description": "Baseline fusion - no stream ciphers",
       "cpu_overhead_percent": 100,
       "security_level": "high",
       "params": {}
     },
     "SALSA_LIGHT": {
-      "algorithms": ["LFSR", "Salsa20"],
+      "algorithms": [
+        "LFSR",
+        "Salsa20"
+      ],
       "description": "Lightweight stream cipher only",
       "cpu_overhead_percent": 120,
       "security_level": "medium-high",
@@ -202,7 +209,11 @@
       }
     },
     "CHACHA_HEAVY": {
-      "algorithms": ["LFSR", "Tinkerbell", "ChaCha20"],
+      "algorithms": [
+        "LFSR",
+        "Tinkerbell",
+        "ChaCha20"
+      ],
       "description": "ChaCha20 with chaos",
       "cpu_overhead_percent": 140,
       "security_level": "very_high",
@@ -211,10 +222,29 @@
       }
     },
     "FULL_STACK": {
-      "algorithms": ["LFSR", "Tinkerbell", "ChaCha20", "Salsa20", "Transposition"],
+      "algorithms": [
+        "LFSR",
+        "Tinkerbell",
+        "ChaCha20",
+        "Salsa20",
+        "Transposition"
+      ],
       "description": "Maximum security - all algorithms active",
       "cpu_overhead_percent": 180,
       "security_level": "maximum",
+      "params": {
+        "chacha_rounds": 20,
+        "salsa_rounds": 20
+      }
+    },
+    "STREAM_FOCUS": {
+      "algorithms": [
+        "ChaCha20",
+        "Salsa20"
+      ],
+      "description": "Stream ciphers only - minimal chaos",
+      "cpu_overhead_percent": 130,
+      "security_level": "high",
       "params": {
         "chacha_rounds": 20,
         "salsa_rounds": 20
