@@ -12,6 +12,8 @@
 #include <chrono>
 #include <unordered_set>
 #include <unordered_map>
+#include <algorithm>
+#include <cctype>
 #include <nlohmann/json.hpp>
 
 // Custom cryptographic libraries
@@ -22,6 +24,8 @@
 #include "../lib/LFSR/include/lfsr.h"
 #include "../lib/Tinkerbell/include/tinkerbell.h"
 #include "../lib/Transposition/include/transposition.h"
+#include "../lib/ChaCha20/include/chacha20_impl.h"
+#include "../lib/Salsa20/include/salsa20_impl.h"
 
 // ZTM Handlers
 #include "api/ztm_handlers.h"
@@ -79,10 +83,45 @@ std::unordered_map<crow::websocket::connection*, std::string> EventBus::clientSe
 
 // Configuration
 #define HMAC_TAG_LEN 16
+#define VERSION_BASE 0x01
+#define VERSION_NONCE_EXT 0x81
+#define VERSION_ZTM 0xC1  // 0x80 (nonce ext) + 0x40 (ZTM recipe) + 0x01 (base)
+#define VERSION_RECIPE_ID 0x82   // packet has recipeId at byte 8, nonce at 9-12 (4B)
 #define GET_TIME_MS() (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count())
+// Recipe wire IDs (must match device). 0=unknown/legacy.
+#define RECIPE_ID_FULL_STACK    1
+#define RECIPE_ID_CHACHA_HEAVY  2
+#define RECIPE_ID_SALSA_LIGHT   3
+#define RECIPE_ID_CHAOS_ONLY    4
+#define RECIPE_ID_STREAM_FOCUS  5
+#define RECIPE_MAP_VERSION 1
+
+// ZTM Recipe enum (must match ESP32)
+enum class ZTMRecipe : uint8_t {
+    FULL_STACK = 0,      // All 5: LFSR + Tinkerbell + Transposition + ChaCha20 + Salsa20
+    CHACHA_HEAVY = 1,    // ChaCha20 + LFSR + Tinkerbell
+    SALSA_LIGHT = 2,     // Salsa20 + LFSR
+    CHAOS_ONLY = 3,      // LFSR + Tinkerbell + Transposition (no stream ciphers)
+    STREAM_FOCUS = 4     // ChaCha20 + Salsa20 + minimal chaos
+};
+
+// Helper to convert recipe to string
+inline std::string recipeToString(ZTMRecipe recipe) {
+    switch (recipe) {
+        case ZTMRecipe::FULL_STACK: return "FULL_STACK";
+        case ZTMRecipe::CHACHA_HEAVY: return "CHACHA_HEAVY";
+        case ZTMRecipe::SALSA_LIGHT: return "SALSA_LIGHT";
+        case ZTMRecipe::CHAOS_ONLY: return "CHAOS_ONLY";
+        case ZTMRecipe::STREAM_FOCUS: return "STREAM_FOCUS";
+        default: return "UNKNOWN";
+    }
+}
 
 // Global state
 std::vector<uint8_t> gMasterKey;
+uint64_t gMasterKeyTimestamp = 0;  // Timestamp when master key was received (ms since epoch)
+uint32_t gSessionCounter = 0;       // Increments on each new master key exchange
+uint32_t g_lastSeenNonce = 0;
 
 // Structures
 struct SaltMeta {
@@ -97,6 +136,9 @@ struct PipelineIntermediates {
     std::string afterTinkerbell;
     std::string afterTransposition;
     std::string afterDepad;
+    // 4D: diagnostic key-dump when HMAC pass but decrypt fail
+    std::string lfsrKeystreamFirst32Hex;
+    std::string tinkerbellKeystreamFirst32Hex;
 };
 
 // NTRU Server
@@ -141,23 +183,7 @@ struct AdaptiveMonitor {
 
 static AdaptiveMonitor gAdaptiveMonitor;
 
-struct NonceTracker { 
-    std::unordered_set<uint32_t> used; 
-    std::mutex mtx;
-    uint64_t startupTime;
-};
-
-static NonceTracker gNonceTracker;
-
-// Utility functions
-std::vector<uint8_t> hexToBytes(const std::string& hex) {
-    std::vector<uint8_t> bytes;
-    for (size_t i = 0; i < hex.length(); i += 2) {
-    SecurityMetrics metrics;
-    uint64_t lastSecurityBroadcast;
-};
-
-static AdaptiveMonitor gAdaptiveMonitor;
+uint32_t getLastSeenNonce() { return g_lastSeenNonce; }
 
 struct NonceTracker { 
     std::unordered_set<uint32_t> used; 
@@ -168,6 +194,7 @@ struct NonceTracker {
 static NonceTracker gNonceTracker;
 
 // Utility functions
+
 std::vector<uint8_t> hexToBytes(const std::string& hex) {
     std::vector<uint8_t> bytes;
     for (size_t i = 0; i < hex.length(); i += 2) {
@@ -517,14 +544,40 @@ std::string pipelineDecryptPacketWithIntermediates(
         return "";
     }
 
-    // Parse header
+    // Parse header. 0x82 = recipeId at byte 8, nonce at 9-12 (4B). 0xC1 = nonce 8-11, recipe at 12.
     const uint8_t* packetData = packet.data();
     uint8_t version = packetData[0];
     bool hasNonce = (version & 0x80) != 0;
-    size_t nonceLen = hasNonce ? 4 : 0;
+    bool hasRecipeId = (version == VERSION_RECIPE_ID);
     
-    if (packetLen < 8 + nonceLen + HMAC_TAG_LEN) {
-        log_error("Packet too short for nonce: " + std::to_string(packetLen));
+    // CRITICAL: Check if packet appears to be ZTM format based on version byte
+    bool packetHasZTMFormat = hasRecipeId || (version == (uint8_t)0xC1) || ((version & 0x40) != 0);
+    
+    // CRITICAL FIX: Only process as ZTM if BOTH:
+    // 1. Packet has ZTM format (version 0x82, 0xC1, or 0x40 bit set)
+    // 2. Server-side ZTM is activated via webpage
+    bool serverZTMActive = ZTMStateManager::getInstance()->getIsActive();
+    bool isZTMPacket = packetHasZTMFormat && serverZTMActive;
+    
+    // If packet has ZTM format but server is not in ZTM mode, reject it
+    if (packetHasZTMFormat && !serverZTMActive) {
+        std::cout << "[SERVER][MODE] REJECTED: Received ZTM-formatted packet (version=0x" 
+                  << std::hex << (int)version << std::dec 
+                  << ") but server is in NORMAL mode. Device should use normal encryption." << std::endl;
+        log_error("Mode mismatch: Device sent ZTM packet but server ZTM is not activated. "
+                  "Activate ZTM from webpage or reset device to normal mode.");
+        adaptive_monitor_update_decrypt_failure(&gAdaptiveMonitor);
+        return "";
+    }
+    
+    size_t headerLen = hasRecipeId ? 9 : 8;
+    size_t nonceLen = hasNonce ? 4 : 0;
+    size_t nonceStart = hasRecipeId ? 9 : 8;
+    size_t recipeLen = isZTMPacket ? 1 : 0;
+    size_t ctStart = headerLen + nonceLen;
+
+    if (packetLen < ctStart + HMAC_TAG_LEN) {
+        log_error("Packet too short for header+nonce: " + std::to_string(packetLen));
         adaptive_monitor_update_decrypt_failure(&gAdaptiveMonitor);
         return "";
     }
@@ -536,11 +589,23 @@ std::string pipelineDecryptPacketWithIntermediates(
     uint8_t cols = packetData[7];
     GridSpec grid = {rows, cols};
     SaltMeta saltMeta = {saltPos, saltLen};
+    uint8_t recipeIdWire = hasRecipeId ? packetData[8] : 0;
 
-    // Extract nonce
     uint32_t nonce = 0;
-    if (hasNonce) {
-        nonce = (packetData[8] << 24) | (packetData[9] << 16) | (packetData[10] << 8) | packetData[11];
+    if (hasNonce && packetLen >= nonceStart + 4) {
+        const uint8_t* np = packetData + nonceStart;
+        nonce = ((uint32_t)np[0] << 24) | ((uint32_t)np[1] << 16) | ((uint32_t)np[2] << 8) | np[3];
+    }
+
+    ZTMRecipe recipe = ZTMRecipe::CHAOS_ONLY;
+    if (hasRecipeId) {
+        if (recipeIdWire >= 1 && recipeIdWire <= 5)
+            recipe = static_cast<ZTMRecipe>(recipeIdWire - 1);  // 1->FULL_STACK, ..., 5->STREAM_FOCUS
+        std::cout << "[SERVER][ZTM] Received 0x82 packet recipeId=" << (int)recipeIdWire
+                  << " -> " << recipeToString(recipe) << std::endl;
+    } else if (isZTMPacket) {
+        recipe = static_cast<ZTMRecipe>(packetData[12]);
+        std::cout << "[SERVER][ZTM] Received 0xC1 packet recipe: " << recipeToString(recipe) << std::endl;
     }
 
     // Validate nonce - FIXED: Allow nonce 1 for initial communication
@@ -557,11 +622,13 @@ std::string pipelineDecryptPacketWithIntermediates(
         }
     }
 
-    // Extract ciphertext and tag
-    size_t ctStart = 8 + nonceLen;
+    // Extract ciphertext and tag (ctStart from header layout)
     size_t ctLen = packetLen - ctStart - HMAC_TAG_LEN;
     std::vector<uint8_t> ct(packetData + ctStart, packetData + ctStart + ctLen);
     std::vector<uint8_t> tag(packetData + ctStart + ctLen, packetData + packetLen);
+
+    std::cout << "[SERVER][DEBUG] ctStart=" << ctStart << " headerLen=" << headerLen
+              << " nonceLen=" << nonceLen << " ctLen=" << ctLen << " packetLen=" << packetLen << std::endl;
 
     std::ostringstream nonceLogStr;
     nonceLogStr << std::hex << std::uppercase << std::setfill('0') << std::setw(8) << nonce;
@@ -571,6 +638,7 @@ std::string pipelineDecryptPacketWithIntermediates(
              " payloadLen=" + std::to_string(payloadLen) +
              " rows=" + std::to_string(rows) +
              " cols=" + std::to_string(cols) +
+             (hasRecipeId ? " recipeId=" + std::to_string((int)recipeIdWire) : (isZTMPacket ? " recipe=" + recipeToString(recipe) : "")) +
              " nonce=0x" + nonceLogStr.str());
 
     // Derive message keys
@@ -589,8 +657,7 @@ std::string pipelineDecryptPacketWithIntermediates(
              " trn[0..3]=" + bytesToHex(messageKeys.transpositionKey, 4) +
              " (nonce=0x" + nonceStr.str() + ")");
 
-    // Verify HMAC with detailed debugging
-    const size_t headerLen = 8;
+    // Verify HMAC (headerLen from parsed layout; 0x82 has 9-byte header then nonce)
     const size_t inputLen = headerLen + nonceLen + ct.size();
     uint8_t tagCheck[HMAC_TAG_LEN];
     
@@ -667,78 +734,179 @@ std::string pipelineDecryptPacketWithIntermediates(
     // Debug ciphertext
     log_debug("Ciphertext: " + bytesToHex(buf.data(), std::min((size_t)32, buf.size())));
 
+    // ZTM MODE: Decrypt ChaCha20/Salsa20 FIRST (reverse order of encryption)
+    // Encryption order: LFSR -> Tinkerbell -> Transposition -> ChaCha20 -> Salsa20
+    // Decryption order: Salsa20 -> ChaCha20 -> Transposition -> Tinkerbell -> LFSR
+    
+    // DEBUG: Log ZTM detection and recipe
+    std::cout << "[SERVER][DEBUG] isZTMPacket=" << (isZTMPacket ? "TRUE" : "FALSE") 
+              << " version=0x" << std::hex << (int)version 
+              << " recipe=" << (int)static_cast<uint8_t>(recipe) << std::dec << std::endl;
+    
+    if (isZTMPacket) {
+        std::cout << "[SERVER][ZTM] Processing ZTM packet with recipe: " << recipeToString(recipe) << std::endl;
+        
+        // Step ZTM-1: Salsa20 decryption (if recipe includes it)
+        // FULL_STACK, SALSA_LIGHT, STREAM_FOCUS include Salsa20
+        if (recipe == ZTMRecipe::FULL_STACK || 
+            recipe == ZTMRecipe::SALSA_LIGHT || 
+            recipe == ZTMRecipe::STREAM_FOCUS) {
+            
+            Salsa20 salsa;
+            uint8_t salsaNonce[8];
+            // Use same nonce derivation as ESP32
+            memcpy(salsaNonce, &nonce, 4);
+            memset(salsaNonce + 4, 0, 4);
+            // Use hmacKey as Salsa20 key (32 bytes) - same as ESP32
+            salsa.init(baseKeys.hmacKey, 32, salsaNonce, 8);
+            
+            std::cout << "[SERVER][SALSA20] Decrypting - Nonce: 0x" << std::hex << nonce << std::dec << std::endl;
+            std::cout << "[SERVER][SALSA20] Key (first 8 bytes): " << bytesToHex(baseKeys.hmacKey, 8) << std::endl;
+            std::cout << "[SERVER][SALSA20] Input (first 16 bytes): " << bytesToHex(buf.data(), std::min((size_t)16, buf.size())) << std::endl;
+            
+            salsa.decrypt(buf.data(), buf.data(), buf.size());
+            
+            std::cout << "[SERVER][SALSA20] Output (first 16 bytes): " << bytesToHex(buf.data(), std::min((size_t)16, buf.size())) << std::endl;
+            log_debug("ZTM_1_After_Salsa20_Decrypt: " + bytesToHex(buf.data(), std::min((size_t)32, buf.size())));
+        }
+        
+        // Step ZTM-2: ChaCha20 decryption (if recipe includes it)
+        // FULL_STACK, CHACHA_HEAVY, STREAM_FOCUS include ChaCha20
+        if (recipe == ZTMRecipe::FULL_STACK || 
+            recipe == ZTMRecipe::CHACHA_HEAVY || 
+            recipe == ZTMRecipe::STREAM_FOCUS) {
+            
+            ChaCha20 chacha;
+            uint8_t chachaNonce[12];
+            // Use same nonce derivation as ESP32
+            memcpy(chachaNonce, &nonce, 4);
+            memset(chachaNonce + 4, 0, 8);
+            // Use hmacKey as ChaCha20 key (32 bytes) - same as ESP32
+            chacha.init(baseKeys.hmacKey, 32, chachaNonce, 12);
+            
+            std::cout << "[SERVER][CHACHA20] Decrypting - Nonce: 0x" << std::hex << nonce << std::dec << std::endl;
+            std::cout << "[SERVER][CHACHA20] Key (first 8 bytes): " << bytesToHex(baseKeys.hmacKey, 8) << std::endl;
+            std::cout << "[SERVER][CHACHA20] Input (first 16 bytes): " << bytesToHex(buf.data(), std::min((size_t)16, buf.size())) << std::endl;
+            
+            chacha.decrypt(buf.data(), buf.data(), buf.size());
+            
+            std::cout << "[SERVER][CHACHA20] Output (first 16 bytes): " << bytesToHex(buf.data(), std::min((size_t)16, buf.size())) << std::endl;
+            log_debug("ZTM_2_After_ChaCha20_Decrypt: " + bytesToHex(buf.data(), std::min((size_t)32, buf.size())));
+        }
+    }
+
     // Step 1: Inverse Transposition (reverse of ESP32's Forward)
-    uint8_t trKey8[8];
-    memcpy(trKey8, messageKeys.transpositionKey, 8);
-    applyTransposition(buf.data(), grid, trKey8, PermuteMode::Inverse);
-    intermediates.afterTransposition = bytesToHex(buf);
-    log_debug("1_After_Transposition: " + intermediates.afterTransposition.substr(0, 64));
+    // In ZTM, transposition is only in FULL_STACK and CHAOS_ONLY
+    bool applyTranspositionStep = true;
+    if (isZTMPacket) {
+        applyTranspositionStep = (recipe == ZTMRecipe::FULL_STACK || 
+                                  recipe == ZTMRecipe::CHAOS_ONLY);
+    }
+    
+    if (applyTranspositionStep) {
+        uint8_t trKey8[8];
+        memcpy(trKey8, messageKeys.transpositionKey, 8);
+        applyTransposition(buf.data(), grid, trKey8, PermuteMode::Inverse);
+        intermediates.afterTransposition = bytesToHex(buf);
+        log_debug("1_After_Transposition: " + intermediates.afterTransposition.substr(0, 64));
+    } else {
+        log_debug("1_Transposition_SKIPPED (ZTM recipe: " + recipeToString(recipe) + ")");
+        intermediates.afterTransposition = bytesToHex(buf);
+    }
 
     // Step 2: Tinkerbell XOR (same operation for encryption/decryption)
-    // DEBUG: Log input before Tinkerbell XOR
-    std::vector<uint8_t> bufBeforeTink = buf;
-    std::ostringstream beforeTinkDebug;
-    beforeTinkDebug << "[TINKERBELL] Input (first 16 bytes): " << bytesToHex(bufBeforeTink.data(), 16)
-                    << " Nonce: 0x" << std::hex << std::uppercase << std::setfill('0') << std::setw(8) << nonce
-                    << " Buffer size: " << buf.size() << " bytes";
-    log_debug(beforeTinkDebug.str());
-    
-    xor_with_stream_hmac(messageKeys.tinkerbellKey, nonce, buf.data(), buf.size());
-    
-    intermediates.afterTinkerbell = bytesToHex(buf);
-    log_debug("2_After_Tinkerbell: " + intermediates.afterTinkerbell.substr(0, 64));
-    
-    // DEBUG: Calculate and log the keystream that was applied
-    std::ostringstream tinkKeystreamDebug;
-    tinkKeystreamDebug << "[TINKERBELL] Applied keystream (first 16 bytes): ";
-    for (size_t i = 0; i < 16 && i < buf.size(); ++i) {
-        uint8_t ks = bufBeforeTink[i] ^ buf[i];
-        tinkKeystreamDebug << std::hex << std::uppercase << std::setfill('0') << std::setw(2) << (int)ks;
+    // In ZTM, Tinkerbell is skipped in SALSA_LIGHT and STREAM_FOCUS
+    bool applyTinkerbellStep = true;
+    if (isZTMPacket) {
+        applyTinkerbellStep = (recipe != ZTMRecipe::SALSA_LIGHT && 
+                               recipe != ZTMRecipe::STREAM_FOCUS);
     }
-    log_debug(tinkKeystreamDebug.str());
+    
+    if (applyTinkerbellStep) {
+        // DEBUG: Log input before Tinkerbell XOR
+        std::vector<uint8_t> bufBeforeTink = buf;
+        std::ostringstream beforeTinkDebug;
+        beforeTinkDebug << "[TINKERBELL] Input (first 16 bytes): " << bytesToHex(bufBeforeTink.data(), 16)
+                        << " Nonce: 0x" << std::hex << std::uppercase << std::setfill('0') << std::setw(8) << nonce
+                        << " Buffer size: " << buf.size() << " bytes";
+        log_debug(beforeTinkDebug.str());
+        
+        xor_with_stream_hmac(messageKeys.tinkerbellKey, nonce, buf.data(), buf.size());
+        
+        intermediates.afterTinkerbell = bytesToHex(buf);
+        log_debug("2_After_Tinkerbell: " + intermediates.afterTinkerbell.substr(0, 64));
+        
+        // DEBUG: Calculate and log the keystream that was applied
+        std::ostringstream tinkKeystreamDebug;
+        tinkKeystreamDebug << "[TINKERBELL] Applied keystream (first 16 bytes): ";
+        for (size_t i = 0; i < 16 && i < buf.size(); ++i) {
+            uint8_t ks = bufBeforeTink[i] ^ buf[i];
+            tinkKeystreamDebug << std::hex << std::uppercase << std::setfill('0') << std::setw(2) << (int)ks;
+        }
+        log_debug(tinkKeystreamDebug.str());
+        std::ostringstream tink32;
+        tink32 << std::hex << std::uppercase << std::setfill('0');
+        for (size_t i = 0; i < 32 && i < buf.size(); ++i)
+            tink32 << std::setw(2) << (int)(bufBeforeTink[i] ^ buf[i]);
+        intermediates.tinkerbellKeystreamFirst32Hex = tink32.str();
+    } else {
+        log_debug("2_Tinkerbell_SKIPPED (ZTM recipe: " + recipeToString(recipe) + ")");
+        intermediates.afterTinkerbell = bytesToHex(buf);
+    }
     
     // Step 3: LFSR (same operation for encryption/decryption)
-    // CRITICAL FIX: The LFSR must be initialized with the SAME parameters and consume keystream in the SAME order
-    // as during encryption. The LFSR uses the tinkerbellKey as the chaos key, which is correct.
-    // However, we need to ensure the LFSR state is initialized identically.
-    // The seed is already correct (messageKeys.lfsrSeed), and the chaos key is correct (messageKeys.tinkerbellKey).
-    
-    // DEBUG: Log LFSR initialization parameters
-    uint32_t lfsrSeed = (uint32_t)messageKeys.lfsrSeed;
-    uint32_t seedBe = ((lfsrSeed >> 24) & 0xFF) | ((lfsrSeed >> 8) & 0xFF00) | 
-                      ((lfsrSeed << 8) & 0xFF0000) | ((lfsrSeed << 24) & 0xFF000000);
-    std::ostringstream lfsrInitDebug;
-    lfsrInitDebug << "[LFSR] Initializing - Seed: 0x" << std::hex << std::uppercase << std::setfill('0') 
-                  << std::setw(8) << lfsrSeed
-                  << " SeedBe: 0x" << std::setw(8) << seedBe
-                  << " ChaosKey[0..3]: " << bytesToHex(messageKeys.tinkerbellKey, 4)
-                  << " InitialTap: 0x0029"
-                  << " State: 0x" << std::setw(8) << (lfsrSeed ? lfsrSeed : 0xACE1u);
-    log_debug(lfsrInitDebug.str());
-    
-    ChaoticLFSR32 lfsr(lfsrSeed, messageKeys.tinkerbellKey, 0x0029u);
-    
-    // DEBUG: Log first few bytes before XOR to compare with keystream
-    std::vector<uint8_t> bufBeforeLFSR = buf;
-    std::ostringstream beforeLFSRDebug;
-    beforeLFSRDebug << "[LFSR] Input (first 16 bytes): " << bytesToHex(bufBeforeLFSR.data(), 16)
-                    << " Buffer size: " << buf.size() << " bytes";
-    log_debug(beforeLFSRDebug.str());
-    
-    lfsr.xorBuffer(buf.data(), buf.size());
-    
-    // DEBUG: Log first few bytes after XOR to verify keystream generation
-    intermediates.afterLFSR = bytesToHex(buf);
-    log_debug("3_After_LFSR: " + intermediates.afterLFSR.substr(0, 64));
-    
-    // Calculate and log the keystream that was applied (XOR of before and after)
-    std::ostringstream lfsrKeystreamDebug;
-    lfsrKeystreamDebug << "[LFSR] Keystream (first 16 bytes): ";
-    for (size_t i = 0; i < 16 && i < buf.size(); ++i) {
-        uint8_t ks = bufBeforeLFSR[i] ^ buf[i];
-        lfsrKeystreamDebug << std::hex << std::uppercase << std::setfill('0') << std::setw(2) << (int)ks;
+    // In ZTM, LFSR is skipped in STREAM_FOCUS
+    bool applyLFSRStep = true;
+    if (isZTMPacket) {
+        applyLFSRStep = (recipe != ZTMRecipe::STREAM_FOCUS);
     }
-    log_debug(lfsrKeystreamDebug.str());
+    
+    if (applyLFSRStep) {
+        // DEBUG: Log LFSR initialization parameters
+        uint32_t lfsrSeed = (uint32_t)messageKeys.lfsrSeed;
+        uint32_t seedBe = ((lfsrSeed >> 24) & 0xFF) | ((lfsrSeed >> 8) & 0xFF00) | 
+                          ((lfsrSeed << 8) & 0xFF0000) | ((lfsrSeed << 24) & 0xFF000000);
+        std::ostringstream lfsrInitDebug;
+        lfsrInitDebug << "[LFSR] Initializing - Seed: 0x" << std::hex << std::uppercase << std::setfill('0') 
+                      << std::setw(8) << lfsrSeed
+                      << " SeedBe: 0x" << std::setw(8) << seedBe
+                      << " ChaosKey[0..3]: " << bytesToHex(messageKeys.tinkerbellKey, 4)
+                      << " InitialTap: 0x0029"
+                      << " State: 0x" << std::setw(8) << (lfsrSeed ? lfsrSeed : 0xACE1u);
+        log_debug(lfsrInitDebug.str());
+        
+        ChaoticLFSR32 lfsr(lfsrSeed, messageKeys.tinkerbellKey, 0x0029u);
+        
+        // DEBUG: Log first few bytes before XOR to compare with keystream
+        std::vector<uint8_t> bufBeforeLFSR = buf;
+        std::ostringstream beforeLFSRDebug;
+        beforeLFSRDebug << "[LFSR] Input (first 16 bytes): " << bytesToHex(bufBeforeLFSR.data(), 16)
+                        << " Buffer size: " << buf.size() << " bytes";
+        log_debug(beforeLFSRDebug.str());
+        
+        lfsr.xorBuffer(buf.data(), buf.size());
+        
+        // DEBUG: Log first few bytes after XOR to verify keystream generation
+        intermediates.afterLFSR = bytesToHex(buf);
+        log_debug("3_After_LFSR: " + intermediates.afterLFSR.substr(0, 64));
+        
+        // Calculate and log the keystream that was applied (XOR of before and after)
+        std::ostringstream lfsrKeystreamDebug;
+        lfsrKeystreamDebug << "[LFSR] Keystream (first 16 bytes): ";
+        for (size_t i = 0; i < 16 && i < buf.size(); ++i) {
+            uint8_t ks = bufBeforeLFSR[i] ^ buf[i];
+            lfsrKeystreamDebug << std::hex << std::uppercase << std::setfill('0') << std::setw(2) << (int)ks;
+        }
+        log_debug(lfsrKeystreamDebug.str());
+        std::ostringstream lfsr32;
+        lfsr32 << std::hex << std::uppercase << std::setfill('0');
+        for (size_t i = 0; i < 32 && i < buf.size(); ++i)
+            lfsr32 << std::setw(2) << (int)(bufBeforeLFSR[i] ^ buf[i]);
+        intermediates.lfsrKeystreamFirst32Hex = lfsr32.str();
+    } else {
+        log_debug("3_LFSR_SKIPPED (ZTM recipe: " + recipeToString(recipe) + ")");
+        intermediates.afterLFSR = bytesToHex(buf);
+    }
 
     // Step 4: Remove salt and padding
     std::vector<uint8_t> unsalted = removeSalt(buf, grid.rows * grid.cols, saltMeta);
@@ -776,10 +944,13 @@ std::string pipelineDecryptPacketWithIntermediates(
     if (!std::regex_search(plaintext, matches, healthRegex)) {
         log_error("Decrypted plaintext does not match health data pattern: " + plaintext);
         log_error("HMAC passed but decryption failed - likely key mismatch or corruption");
-        log_error("Debug: nonce=0x" + nonceStr.str() + 
+        log_error("4D Diagnostic [compare with device]: nonce=0x" + nonceStr.str() +
+                 " recipeId=" + std::to_string((int)recipeIdWire) +
                  " lfsrSeed=0x" + seedStr.str() +
                  " tinkerbellKey[0..3]=" + bytesToHex(messageKeys.tinkerbellKey, 4) +
                  " transpositionKey[0..3]=" + bytesToHex(messageKeys.transpositionKey, 4));
+        log_error("4D Diagnostic: Tinkerbell keystream (first 32 bytes): " + intermediates.tinkerbellKeystreamFirst32Hex);
+        log_error("4D Diagnostic: LFSR keystream (first 32 bytes): " + intermediates.lfsrKeystreamFirst32Hex);
         log_error("Debug: After LFSR: " + intermediates.afterLFSR.substr(0, 64));
         log_error("Debug: After Depad: " + intermediates.afterDepad.substr(0, 64));
         // Don't mark nonce as used - allow retry
@@ -791,6 +962,9 @@ std::string pipelineDecryptPacketWithIntermediates(
     if (hasNonce) {
         nonce_tracker_mark_used(&gNonceTracker, nonce);
     }
+    
+    // Epoch protocol: remember last nonce so server can propose commit_nonce = lastSeenNonce + N
+    g_lastSeenNonce = nonce;
     
     log_info("Successfully decrypted: " + plaintext);
 
@@ -1083,7 +1257,11 @@ int main() {
                     auto rawBytes = hexToBytes(rawHex);
                     if (rawBytes.size() == 32) {
                         gMasterKey = rawBytes;
+                        gSessionCounter++;
+                        gMasterKeyTimestamp = GET_TIME_MS();
+                        log_info("=== NEW MASTER KEY RECEIVED (Session #" + std::to_string(gSessionCounter) + ") ===");
                         log_info("Using RAWKEY from client for HMAC derivation");
+                        log_info("Master key: " + bytesToHex(gMasterKey.data(), 32));
                         
                         // Reset nonce tracker on new master key exchange (new session)
                         nonce_tracker_init(&gNonceTracker);
@@ -1182,7 +1360,8 @@ int main() {
         }
 
         if (gMasterKey.empty()) {
-            log_error("No master key available for decryption");
+            log_error("No master key available for decryption - ESP32 must exchange key first");
+            log_error("(Session counter = " + std::to_string(gSessionCounter) + ", server may need restart if ESP32 already sent key)");
             crow::response res(400, crow::json::wvalue{{"error", "No master key"}});
             handleCORS(req, res);
             return res;
@@ -1224,6 +1403,41 @@ int main() {
                 log_debug("Received packet bytes (first 12 bytes): " + bytesToHex(packet.data(), 12));
             }
 
+            // 4A: In ZTM mode, require per-packet recipe metadata (0x82 format).
+            // In normal mode, accept 0x81 (nonce without recipeId).
+            if (packet.size() >= 1) {
+                uint8_t version = packet[0];
+                bool hasNonce = (version & 0x80) != 0;
+                bool ztmActive = ZTMStateManager::getInstance()->getIsActive();
+                
+                // Only require recipeId when ZTM is active
+                if (ztmActive && hasNonce && version != VERSION_RECIPE_ID) {
+                    std::ostringstream vhex;
+                    vhex << std::hex << std::setw(2) << std::setfill('0') << (int)version;
+                    log_warn("ZTM active but packet missing recipe metadata (version=0x" + vhex.str() +
+                             "); expecting 0x82 with recipeId. Rejecting.");
+                    crow::response res(400, crow::json::wvalue{{"error", "MISSING_RECIPE"}, {"message", "ZTM mode requires 0x82 packet with recipeId"}});
+                    handleCORS(req, res);
+                    return res;
+                }
+                if (version == VERSION_RECIPE_ID) {
+                    if (packet.size() < 9) {
+                        log_error("Packet with recipe version too short for recipeId");
+                        crow::response res(400, crow::json::wvalue{{"error", "MISSING_RECIPE"}, {"message", "Packet too short for recipeId"}});
+                        handleCORS(req, res);
+                        return res;
+                    }
+                    uint8_t recipeId = packet[8];
+                    if (recipeId < 1 || recipeId > 5) {
+                        log_error("Unknown recipe id from device: " + std::to_string((int)recipeId));
+                        crow::response res(400, crow::json::wvalue{{"error", "UNKNOWN_RECIPE"}, {"recipeId", (int)recipeId}});
+                        handleCORS(req, res);
+                        return res;
+                    }
+                    log_debug("Packet recipeId=" + std::to_string((int)recipeId));
+                }
+            }
+
             // Derive keys
             DerivedKeys baseKeys;
             if (!deriveKeys(gMasterKey.data(), gMasterKey.size(), baseKeys)) {
@@ -1257,12 +1471,18 @@ int main() {
             double decryptMs = std::chrono::duration<double, std::milli>(end - start).count();
 
             if (plaintext.empty()) {
-                log_error("Decryption failed");
+                log_error("Decryption failed (Session #" + std::to_string(gSessionCounter) + 
+                          ", MasterKey[0..7]: " + bytesToHex(gMasterKey.data(), 8) + ")");
+                log_error("Key mismatch? Ensure ESP32 and server exchanged keys in same session");
                 crow::response res(400, crow::json::wvalue{{"error", "Decryption failed"}});
                 handleCORS(req, res);
                 return res;
             }
 
+            if (packet.size() >= 13 && (packet[0] & 0x80) != 0) {
+                const uint8_t* np = packet.data() + 9;
+                g_lastSeenNonce = ((uint32_t)np[0] << 24) | ((uint32_t)np[1] << 16) | ((uint32_t)np[2] << 8) | np[3];
+            }
             log_info("Successfully decrypted: " + plaintext + " (time: " + std::to_string(decryptMs) + " ms)");
 
             // Rate-limited security update
@@ -1391,33 +1611,41 @@ int main() {
             
             std::string mode = body["mode"];  // "normal" or "ztm"
             std::string recipe = body["recipe"];  // "full_stack", "chacha_heavy", etc.
+            std::string reason = body.value("reason", "Manual switch request from dashboard");
             
             log_info("Adaptive switch requested: mode=" + mode + ", recipe=" + recipe);
             
-            // Broadcast mode change request to ESP32 via WebSocket
-            nlohmann::json switchMsg = {
-                {"type", "adaptive_switch_request"},
-                {"mode", mode},
-                {"recipe", recipe},
-                {"serverTime", GET_TIME_MS()},
-                {"requiresAck", true}
-            };
-            EventBus::broadcast(switchMsg);
+            ZTMStateManager* ztm = ZTMStateManager::getInstance();
+            bool accepted = false;
             
-            // Emit telemetry event
-            nlohmann::json telemetry = {
-                {"type", "telemetry"},
-                {"event", "mode_change_requested"},
-                {"data", "mode=" + mode + ",recipe=" + recipe},
+            // Two-Phase Commit: proposeSwitchToDevice sends switch_propose; server commits only on switch_done.
+            if (mode == "ztm" && ztm->getIsActive()) {
+                std::string recipeUpper = recipe;
+                std::transform(recipeUpper.begin(), recipeUpper.end(), recipeUpper.begin(), ::toupper);
+                std::string proposalId = ztm->proposeSwitchToDevice(recipeUpper, reason, EventBus::broadcast);
+                if (!proposalId.empty()) {
+                    log_info("Sending switch_propose proposalId=" + proposalId + " recipe=" + recipeUpper);
+                    accepted = true;
+                }
+            }
+            
+            nlohmann::json recipeUpdate = {
+                {"type", "recipe_update"},
+                {"recipe", recipe},
+                {"mode", mode},
+                {"reason", reason},
+                {"pending", true},
+                {"automatic", false},
                 {"serverTime", GET_TIME_MS()}
             };
-            EventBus::broadcast(telemetry);
+            EventBus::broadcast(recipeUpdate);
             
             crow::response res(200, crow::json::wvalue{
-                {"status", "OK"},
-                {"message", "Mode switch request sent to ESP32"},
+                {"status", accepted ? "PENDING" : "REJECTED"},
+                {"message", accepted ? "switch_propose sent; server will commit on switch_done" : "Invalid or ZTM inactive"},
                 {"mode", mode},
-                {"recipe", recipe}
+                {"recipe", recipe},
+                {"serverRecipeUpdated", false}
             });
             handleCORS(req, res);
             return res;
@@ -1542,6 +1770,10 @@ int main() {
     adaptive_monitor_init(&gAdaptiveMonitor);
     nonce_tracker_init(&gNonceTracker);
     log_info("Nonce tracker reset for new session");
+
+    // 4C: Recipe map version and mapping (must match device)
+    log_info("Recipe map version: " + std::to_string(RECIPE_MAP_VERSION));
+    log_info("Recipe mapping: 1=FULL_STACK 2=CHACHA_HEAVY 3=SALSA_LIGHT 4=CHAOS_ONLY 5=STREAM_FOCUS");
 
     // Start metrics thread
     gMetricsThread = std::thread(metricsThreadFunction);

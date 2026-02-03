@@ -118,7 +118,7 @@ export default function ZeroTrustMode() {
     if (success) {
       setShowPasskeyModal(false)
       setIsActivating(true)
-      enableZeroTrust()
+      enableZeroTrust(passkey)  // Pass the passkey that was just verified
       setTimeout(() => setIsActivating(false), 1500)
     }
     return success
@@ -260,10 +260,10 @@ export default function ZeroTrustMode() {
         {/* Passkey Modal */}
         <ZTMPasskeyModal
           isOpen={showPasskeyModal}
-          onSuccess={() => {
+          onSuccess={(passkey: string) => {
             setShowPasskeyModal(false)
             setIsActivating(true)
-            enableZeroTrust()
+            enableZeroTrust(passkey)  // Pass the verified passkey to server
             setTimeout(() => setIsActivating(false), 1500)
           }}
           onCancel={() => setShowPasskeyModal(false)}
@@ -372,15 +372,15 @@ export default function ZeroTrustMode() {
               switchReason={lastSwitchReason || undefined}
               switchedAt={lastSwitchTime || undefined}
             />
+          </div>
+
+          {/* Center Column: ESP-Server View, Threat Metrics, Historical Metrics, Session Export */}
+          <div className="space-y-6">
             <ZTMESPServerHealthView
               esp32={esp32Data}
               server={serverData}
               healthData={healthData}
             />
-          </div>
-
-          {/* Center Column: Threat Metrics, Historical Metrics, Session Export */}
-          <div className="space-y-6">
             <ZTMThreatMetricsDashboard
               metrics={heuristics}
               isZTMEnabled={isZeroTrustMode}

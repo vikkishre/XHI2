@@ -24,7 +24,7 @@ events:
       The output was:
       0
       MSBuild version 17.11.9+a69bbaaf5 for .NET Framework
-      Build started 11-11-2025 3.21.21 PM.
+      Build started 03-02-2026 7.03.35 PM.
       
       Project "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\3.30.4\\CompilerIdC\\CompilerIdC.vcxproj" on node 1 (default targets).
       PrepareForBuild:
@@ -62,7 +62,7 @@ events:
           0 Warning(s)
           0 Error(s)
       
-      Time Elapsed 00:00:00.85
+      Time Elapsed 00:00:00.87
       
       
       Compilation of the C compiler identification source "CMakeCCompilerId.c" produced "CompilerIdC.exe"
@@ -88,7 +88,7 @@ events:
       The output was:
       0
       MSBuild version 17.11.9+a69bbaaf5 for .NET Framework
-      Build started 11-11-2025 3.21.22 PM.
+      Build started 03-02-2026 7.03.36 PM.
       
       Project "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\3.30.4\\CompilerIdCXX\\CompilerIdCXX.vcxproj" on node 1 (default targets).
       PrepareForBuild:
@@ -126,7 +126,7 @@ events:
           0 Warning(s)
           0 Error(s)
       
-      Time Elapsed 00:00:00.90
+      Time Elapsed 00:00:00.96
       
       
       Compilation of the CXX compiler identification source "CMakeCXXCompilerId.cpp" produced "CompilerIdCXX.exe"
@@ -145,8 +145,8 @@ events:
     checks:
       - "Detecting C compiler ABI info"
     directories:
-      source: "D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server/build/CMakeFiles/CMakeScratch/TryCompile-cyre35"
-      binary: "D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server/build/CMakeFiles/CMakeScratch/TryCompile-cyre35"
+      source: "D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server/build/CMakeFiles/CMakeScratch/TryCompile-glgkvg"
+      binary: "D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server/build/CMakeFiles/CMakeScratch/TryCompile-glgkvg"
     cmakeVariables:
       CMAKE_C_FLAGS: "/DWIN32 /D_WINDOWS"
       CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
@@ -159,40 +159,40 @@ events:
       variable: "CMAKE_C_ABI_COMPILED"
       cached: true
       stdout: |
-        Change Dir: 'D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server/build/CMakeFiles/CMakeScratch/TryCompile-cyre35'
+        Change Dir: 'D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server/build/CMakeFiles/CMakeScratch/TryCompile-glgkvg'
         
-        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_f38d6.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=17.0 /v:n
+        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_32265.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=17.0 /v:n
         MSBuild version 17.11.9+a69bbaaf5 for .NET Framework
-        Build started 11-11-2025 3.21.24 PM.
+        Build started 03-02-2026 7.03.37 PM.
         
-        Project "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-cyre35\\cmTC_f38d6.vcxproj" on node 1 (default targets).
+        Project "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-glgkvg\\cmTC_32265.vcxproj" on node 1 (default targets).
         PrepareForBuild:
-          Creating directory "cmTC_f38d6.dir\\Debug\\".
+          Creating directory "cmTC_32265.dir\\Debug\\".
           Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
-          Creating directory "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-cyre35\\Debug\\".
-          Creating directory "cmTC_f38d6.dir\\Debug\\cmTC_f38d6.tlog\\".
+          Creating directory "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-glgkvg\\Debug\\".
+          Creating directory "cmTC_32265.dir\\Debug\\cmTC_32265.tlog\\".
         InitializeBuildStatus:
-          Creating "cmTC_f38d6.dir\\Debug\\cmTC_f38d6.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
-          Touching "cmTC_f38d6.dir\\Debug\\cmTC_f38d6.tlog\\unsuccessfulbuild".
+          Creating "cmTC_32265.dir\\Debug\\cmTC_32265.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
+          Touching "cmTC_32265.dir\\Debug\\cmTC_32265.tlog\\unsuccessfulbuild".
         ClCompile:
-          C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\MSVC\\14.41.34120\\bin\\HostX64\\x64\\CL.exe /c /Zi /W1 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"cmTC_f38d6.dir\\Debug\\\\" /Fd"cmTC_f38d6.dir\\Debug\\vc143.pdb" /external:W1 /Gd /TC /errorReport:queue "C:\\Program Files\\CMake\\share\\cmake-3.30\\Modules\\CMakeCCompilerABI.c"
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\MSVC\\14.41.34120\\bin\\HostX64\\x64\\CL.exe /c /Zi /W1 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"cmTC_32265.dir\\Debug\\\\" /Fd"cmTC_32265.dir\\Debug\\vc143.pdb" /external:W1 /Gd /TC /errorReport:queue "C:\\Program Files\\CMake\\share\\cmake-3.30\\Modules\\CMakeCCompilerABI.c"
           Microsoft (R) C/C++ Optimizing Compiler Version 19.41.34120 for x64
           Copyright (C) Microsoft Corporation.  All rights reserved.
-          cl /c /Zi /W1 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"cmTC_f38d6.dir\\Debug\\\\" /Fd"cmTC_f38d6.dir\\Debug\\vc143.pdb" /external:W1 /Gd /TC /errorReport:queue "C:\\Program Files\\CMake\\share\\cmake-3.30\\Modules\\CMakeCCompilerABI.c"
+          cl /c /Zi /W1 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"cmTC_32265.dir\\Debug\\\\" /Fd"cmTC_32265.dir\\Debug\\vc143.pdb" /external:W1 /Gd /TC /errorReport:queue "C:\\Program Files\\CMake\\share\\cmake-3.30\\Modules\\CMakeCCompilerABI.c"
           CMakeCCompilerABI.c
         Link:
-          C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\MSVC\\14.41.34120\\bin\\HostX64\\x64\\link.exe /ERRORREPORT:QUEUE /OUT:"D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-cyre35\\Debug\\cmTC_f38d6.exe" /INCREMENTAL /ILK:"cmTC_f38d6.dir\\Debug\\cmTC_f38d6.ilk" /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server/build/CMakeFiles/CMakeScratch/TryCompile-cyre35/Debug/cmTC_f38d6.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server/build/CMakeFiles/CMakeScratch/TryCompile-cyre35/Debug/cmTC_f38d6.lib" /MACHINE:X64  /machine:x64 cmTC_f38d6.dir\\Debug\\CMakeCCompilerABI.obj
-          cmTC_f38d6.vcxproj -> D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-cyre35\\Debug\\cmTC_f38d6.exe
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\MSVC\\14.41.34120\\bin\\HostX64\\x64\\link.exe /ERRORREPORT:QUEUE /OUT:"D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-glgkvg\\Debug\\cmTC_32265.exe" /INCREMENTAL /ILK:"cmTC_32265.dir\\Debug\\cmTC_32265.ilk" /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server/build/CMakeFiles/CMakeScratch/TryCompile-glgkvg/Debug/cmTC_32265.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server/build/CMakeFiles/CMakeScratch/TryCompile-glgkvg/Debug/cmTC_32265.lib" /MACHINE:X64  /machine:x64 cmTC_32265.dir\\Debug\\CMakeCCompilerABI.obj
+          cmTC_32265.vcxproj -> D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-glgkvg\\Debug\\cmTC_32265.exe
         FinalizeBuildStatus:
-          Deleting file "cmTC_f38d6.dir\\Debug\\cmTC_f38d6.tlog\\unsuccessfulbuild".
-          Touching "cmTC_f38d6.dir\\Debug\\cmTC_f38d6.tlog\\cmTC_f38d6.lastbuildstate".
-        Done Building Project "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-cyre35\\cmTC_f38d6.vcxproj" (default targets).
+          Deleting file "cmTC_32265.dir\\Debug\\cmTC_32265.tlog\\unsuccessfulbuild".
+          Touching "cmTC_32265.dir\\Debug\\cmTC_32265.tlog\\cmTC_32265.lastbuildstate".
+        Done Building Project "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-glgkvg\\cmTC_32265.vcxproj" (default targets).
         
         Build succeeded.
             0 Warning(s)
             0 Error(s)
         
-        Time Elapsed 00:00:00.55
+        Time Elapsed 00:00:00.52
         
       exitCode: 0
   -
@@ -232,8 +232,8 @@ events:
     checks:
       - "Detecting CXX compiler ABI info"
     directories:
-      source: "D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server/build/CMakeFiles/CMakeScratch/TryCompile-vuexzr"
-      binary: "D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server/build/CMakeFiles/CMakeScratch/TryCompile-vuexzr"
+      source: "D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server/build/CMakeFiles/CMakeScratch/TryCompile-dgeoyt"
+      binary: "D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server/build/CMakeFiles/CMakeScratch/TryCompile-dgeoyt"
     cmakeVariables:
       CMAKE_CXX_FLAGS: "/DWIN32 /D_WINDOWS /GR /EHsc"
       CMAKE_CXX_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
@@ -247,40 +247,40 @@ events:
       variable: "CMAKE_CXX_ABI_COMPILED"
       cached: true
       stdout: |
-        Change Dir: 'D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server/build/CMakeFiles/CMakeScratch/TryCompile-vuexzr'
+        Change Dir: 'D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server/build/CMakeFiles/CMakeScratch/TryCompile-dgeoyt'
         
-        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_69d49.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=17.0 /v:n
+        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_3e8b6.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=17.0 /v:n
         MSBuild version 17.11.9+a69bbaaf5 for .NET Framework
-        Build started 11-11-2025 3.21.24 PM.
+        Build started 03-02-2026 7.03.38 PM.
         
-        Project "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-vuexzr\\cmTC_69d49.vcxproj" on node 1 (default targets).
+        Project "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-dgeoyt\\cmTC_3e8b6.vcxproj" on node 1 (default targets).
         PrepareForBuild:
-          Creating directory "cmTC_69d49.dir\\Debug\\".
+          Creating directory "cmTC_3e8b6.dir\\Debug\\".
           Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
-          Creating directory "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-vuexzr\\Debug\\".
-          Creating directory "cmTC_69d49.dir\\Debug\\cmTC_69d49.tlog\\".
+          Creating directory "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-dgeoyt\\Debug\\".
+          Creating directory "cmTC_3e8b6.dir\\Debug\\cmTC_3e8b6.tlog\\".
         InitializeBuildStatus:
-          Creating "cmTC_69d49.dir\\Debug\\cmTC_69d49.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
-          Touching "cmTC_69d49.dir\\Debug\\cmTC_69d49.tlog\\unsuccessfulbuild".
+          Creating "cmTC_3e8b6.dir\\Debug\\cmTC_3e8b6.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
+          Touching "cmTC_3e8b6.dir\\Debug\\cmTC_3e8b6.tlog\\unsuccessfulbuild".
         ClCompile:
-          C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\MSVC\\14.41.34120\\bin\\HostX64\\x64\\CL.exe /c /Zi /W1 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D "CMAKE_INTDIR=\\"Debug\\"" /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /GR /Fo"cmTC_69d49.dir\\Debug\\\\" /Fd"cmTC_69d49.dir\\Debug\\vc143.pdb" /external:W1 /Gd /TP /errorReport:queue "C:\\Program Files\\CMake\\share\\cmake-3.30\\Modules\\CMakeCXXCompilerABI.cpp"
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\MSVC\\14.41.34120\\bin\\HostX64\\x64\\CL.exe /c /Zi /W1 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D "CMAKE_INTDIR=\\"Debug\\"" /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /GR /Fo"cmTC_3e8b6.dir\\Debug\\\\" /Fd"cmTC_3e8b6.dir\\Debug\\vc143.pdb" /external:W1 /Gd /TP /errorReport:queue "C:\\Program Files\\CMake\\share\\cmake-3.30\\Modules\\CMakeCXXCompilerABI.cpp"
           Microsoft (R) C/C++ Optimizing Compiler Version 19.41.34120 for x64
           Copyright (C) Microsoft Corporation.  All rights reserved.
-          cl /c /Zi /W1 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D "CMAKE_INTDIR=\\"Debug\\"" /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /GR /Fo"cmTC_69d49.dir\\Debug\\\\" /Fd"cmTC_69d49.dir\\Debug\\vc143.pdb" /external:W1 /Gd /TP /errorReport:queue "C:\\Program Files\\CMake\\share\\cmake-3.30\\Modules\\CMakeCXXCompilerABI.cpp"
+          cl /c /Zi /W1 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D "CMAKE_INTDIR=\\"Debug\\"" /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /GR /Fo"cmTC_3e8b6.dir\\Debug\\\\" /Fd"cmTC_3e8b6.dir\\Debug\\vc143.pdb" /external:W1 /Gd /TP /errorReport:queue "C:\\Program Files\\CMake\\share\\cmake-3.30\\Modules\\CMakeCXXCompilerABI.cpp"
           CMakeCXXCompilerABI.cpp
         Link:
-          C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\MSVC\\14.41.34120\\bin\\HostX64\\x64\\link.exe /ERRORREPORT:QUEUE /OUT:"D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-vuexzr\\Debug\\cmTC_69d49.exe" /INCREMENTAL /ILK:"cmTC_69d49.dir\\Debug\\cmTC_69d49.ilk" /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server/build/CMakeFiles/CMakeScratch/TryCompile-vuexzr/Debug/cmTC_69d49.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server/build/CMakeFiles/CMakeScratch/TryCompile-vuexzr/Debug/cmTC_69d49.lib" /MACHINE:X64  /machine:x64 cmTC_69d49.dir\\Debug\\CMakeCXXCompilerABI.obj
-          cmTC_69d49.vcxproj -> D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-vuexzr\\Debug\\cmTC_69d49.exe
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\MSVC\\14.41.34120\\bin\\HostX64\\x64\\link.exe /ERRORREPORT:QUEUE /OUT:"D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-dgeoyt\\Debug\\cmTC_3e8b6.exe" /INCREMENTAL /ILK:"cmTC_3e8b6.dir\\Debug\\cmTC_3e8b6.ilk" /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server/build/CMakeFiles/CMakeScratch/TryCompile-dgeoyt/Debug/cmTC_3e8b6.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server/build/CMakeFiles/CMakeScratch/TryCompile-dgeoyt/Debug/cmTC_3e8b6.lib" /MACHINE:X64  /machine:x64 cmTC_3e8b6.dir\\Debug\\CMakeCXXCompilerABI.obj
+          cmTC_3e8b6.vcxproj -> D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-dgeoyt\\Debug\\cmTC_3e8b6.exe
         FinalizeBuildStatus:
-          Deleting file "cmTC_69d49.dir\\Debug\\cmTC_69d49.tlog\\unsuccessfulbuild".
-          Touching "cmTC_69d49.dir\\Debug\\cmTC_69d49.tlog\\cmTC_69d49.lastbuildstate".
-        Done Building Project "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-vuexzr\\cmTC_69d49.vcxproj" (default targets).
+          Deleting file "cmTC_3e8b6.dir\\Debug\\cmTC_3e8b6.tlog\\unsuccessfulbuild".
+          Touching "cmTC_3e8b6.dir\\Debug\\cmTC_3e8b6.tlog\\cmTC_3e8b6.lastbuildstate".
+        Done Building Project "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-dgeoyt\\cmTC_3e8b6.vcxproj" (default targets).
         
         Build succeeded.
             0 Warning(s)
             0 Error(s)
         
-        Time Elapsed 00:00:00.57
+        Time Elapsed 00:00:00.54
         
       exitCode: 0
   -
@@ -326,8 +326,8 @@ events:
       - "C:/Users/chall/vcpkg/scripts/buildsystems/vcpkg.cmake:896 (_find_package)"
       - "CMakeLists.txt:20 (find_package)"
     directories:
-      source: "D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server/build/CMakeFiles/CMakeScratch/TryCompile-h9actx"
-      binary: "D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server/build/CMakeFiles/CMakeScratch/TryCompile-h9actx"
+      source: "D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server/build/CMakeFiles/CMakeScratch/TryCompile-j7bizo"
+      binary: "D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server/build/CMakeFiles/CMakeScratch/TryCompile-j7bizo"
     cmakeVariables:
       CMAKE_C_FLAGS: "/DWIN32 /D_WINDOWS"
       CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
@@ -341,40 +341,40 @@ events:
       variable: "CMAKE_HAVE_LIBC_PTHREAD"
       cached: true
       stdout: |
-        Change Dir: 'D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server/build/CMakeFiles/CMakeScratch/TryCompile-h9actx'
+        Change Dir: 'D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server/build/CMakeFiles/CMakeScratch/TryCompile-j7bizo'
         
-        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_b3bb5.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=17.0 /v:n
+        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_55d65.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=17.0 /v:n
         MSBuild version 17.11.9+a69bbaaf5 for .NET Framework
-        Build started 11-11-2025 3.21.25 PM.
+        Build started 03-02-2026 7.03.39 PM.
         
-        Project "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-h9actx\\cmTC_b3bb5.vcxproj" on node 1 (default targets).
+        Project "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-j7bizo\\cmTC_55d65.vcxproj" on node 1 (default targets).
         PrepareForBuild:
-          Creating directory "cmTC_b3bb5.dir\\Debug\\".
+          Creating directory "cmTC_55d65.dir\\Debug\\".
           Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
-          Creating directory "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-h9actx\\Debug\\".
-          Creating directory "cmTC_b3bb5.dir\\Debug\\cmTC_b3bb5.tlog\\".
+          Creating directory "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-j7bizo\\Debug\\".
+          Creating directory "cmTC_55d65.dir\\Debug\\cmTC_55d65.tlog\\".
         InitializeBuildStatus:
-          Creating "cmTC_b3bb5.dir\\Debug\\cmTC_b3bb5.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
-          Touching "cmTC_b3bb5.dir\\Debug\\cmTC_b3bb5.tlog\\unsuccessfulbuild".
+          Creating "cmTC_55d65.dir\\Debug\\cmTC_55d65.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
+          Touching "cmTC_55d65.dir\\Debug\\cmTC_55d65.tlog\\unsuccessfulbuild".
         ClCompile:
-          C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\MSVC\\14.41.34120\\bin\\HostX64\\x64\\CL.exe /c /Zi /W1 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D CMAKE_HAVE_LIBC_PTHREAD /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"cmTC_b3bb5.dir\\Debug\\\\" /Fd"cmTC_b3bb5.dir\\Debug\\vc143.pdb" /external:W1 /Gd /TC /errorReport:queue "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-h9actx\\src.c"
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\MSVC\\14.41.34120\\bin\\HostX64\\x64\\CL.exe /c /Zi /W1 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D CMAKE_HAVE_LIBC_PTHREAD /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"cmTC_55d65.dir\\Debug\\\\" /Fd"cmTC_55d65.dir\\Debug\\vc143.pdb" /external:W1 /Gd /TC /errorReport:queue "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-j7bizo\\src.c"
           Microsoft (R) C/C++ Optimizing Compiler Version 19.41.34120 for x64
           Copyright (C) Microsoft Corporation.  All rights reserved.
-          cl /c /Zi /W1 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D CMAKE_HAVE_LIBC_PTHREAD /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"cmTC_b3bb5.dir\\Debug\\\\" /Fd"cmTC_b3bb5.dir\\Debug\\vc143.pdb" /external:W1 /Gd /TC /errorReport:queue "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-h9actx\\src.c"
+          cl /c /Zi /W1 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D CMAKE_HAVE_LIBC_PTHREAD /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"cmTC_55d65.dir\\Debug\\\\" /Fd"cmTC_55d65.dir\\Debug\\vc143.pdb" /external:W1 /Gd /TC /errorReport:queue "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-j7bizo\\src.c"
           src.c
-        D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-h9actx\\src.c(1,10): error C1083: Cannot open include file: 'pthread.h': No such file or directory [D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-h9actx\\cmTC_b3bb5.vcxproj]
-        Done Building Project "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-h9actx\\cmTC_b3bb5.vcxproj" (default targets) -- FAILED.
+        D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-j7bizo\\src.c(1,10): error C1083: Cannot open include file: 'pthread.h': No such file or directory [D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-j7bizo\\cmTC_55d65.vcxproj]
+        Done Building Project "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-j7bizo\\cmTC_55d65.vcxproj" (default targets) -- FAILED.
         
         Build FAILED.
         
-        "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-h9actx\\cmTC_b3bb5.vcxproj" (default target) (1) ->
+        "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-j7bizo\\cmTC_55d65.vcxproj" (default target) (1) ->
         (ClCompile target) -> 
-          D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-h9actx\\src.c(1,10): error C1083: Cannot open include file: 'pthread.h': No such file or directory [D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-h9actx\\cmTC_b3bb5.vcxproj]
+          D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-j7bizo\\src.c(1,10): error C1083: Cannot open include file: 'pthread.h': No such file or directory [D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-j7bizo\\cmTC_55d65.vcxproj]
         
             0 Warning(s)
             1 Error(s)
         
-        Time Elapsed 00:00:00.38
+        Time Elapsed 00:00:00.34
         
       exitCode: 1
   -
@@ -391,8 +391,8 @@ events:
       - "C:/Users/chall/vcpkg/scripts/buildsystems/vcpkg.cmake:896 (_find_package)"
       - "CMakeLists.txt:20 (find_package)"
     directories:
-      source: "D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server/build/CMakeFiles/CMakeScratch/TryCompile-7ahf5t"
-      binary: "D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server/build/CMakeFiles/CMakeScratch/TryCompile-7ahf5t"
+      source: "D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server/build/CMakeFiles/CMakeScratch/TryCompile-ewvzoc"
+      binary: "D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server/build/CMakeFiles/CMakeScratch/TryCompile-ewvzoc"
     cmakeVariables:
       CMAKE_C_FLAGS: "/DWIN32 /D_WINDOWS"
       CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
@@ -406,42 +406,42 @@ events:
       variable: "CMAKE_HAVE_PTHREADS_CREATE"
       cached: true
       stdout: |
-        Change Dir: 'D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server/build/CMakeFiles/CMakeScratch/TryCompile-7ahf5t'
+        Change Dir: 'D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server/build/CMakeFiles/CMakeScratch/TryCompile-ewvzoc'
         
-        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_2264f.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=17.0 /v:n
+        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_376a5.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=17.0 /v:n
         MSBuild version 17.11.9+a69bbaaf5 for .NET Framework
-        Build started 11-11-2025 3.21.26 PM.
+        Build started 03-02-2026 7.03.39 PM.
         
-        Project "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-7ahf5t\\cmTC_2264f.vcxproj" on node 1 (default targets).
+        Project "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ewvzoc\\cmTC_376a5.vcxproj" on node 1 (default targets).
         PrepareForBuild:
-          Creating directory "cmTC_2264f.dir\\Debug\\".
+          Creating directory "cmTC_376a5.dir\\Debug\\".
           Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
-          Creating directory "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-7ahf5t\\Debug\\".
-          Creating directory "cmTC_2264f.dir\\Debug\\cmTC_2264f.tlog\\".
+          Creating directory "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ewvzoc\\Debug\\".
+          Creating directory "cmTC_376a5.dir\\Debug\\cmTC_376a5.tlog\\".
         InitializeBuildStatus:
-          Creating "cmTC_2264f.dir\\Debug\\cmTC_2264f.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
-          Touching "cmTC_2264f.dir\\Debug\\cmTC_2264f.tlog\\unsuccessfulbuild".
+          Creating "cmTC_376a5.dir\\Debug\\cmTC_376a5.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
+          Touching "cmTC_376a5.dir\\Debug\\cmTC_376a5.tlog\\unsuccessfulbuild".
         ClCompile:
-          C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\MSVC\\14.41.34120\\bin\\HostX64\\x64\\CL.exe /c /Zi /W1 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D CHECK_FUNCTION_EXISTS=pthread_create /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"cmTC_2264f.dir\\Debug\\\\" /Fd"cmTC_2264f.dir\\Debug\\vc143.pdb" /external:W1 /Gd /TC /errorReport:queue "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-7ahf5t\\CheckFunctionExists.c"
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\MSVC\\14.41.34120\\bin\\HostX64\\x64\\CL.exe /c /Zi /W1 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D CHECK_FUNCTION_EXISTS=pthread_create /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"cmTC_376a5.dir\\Debug\\\\" /Fd"cmTC_376a5.dir\\Debug\\vc143.pdb" /external:W1 /Gd /TC /errorReport:queue "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ewvzoc\\CheckFunctionExists.c"
           Microsoft (R) C/C++ Optimizing Compiler Version 19.41.34120 for x64
           Copyright (C) Microsoft Corporation.  All rights reserved.
-          cl /c /Zi /W1 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D CHECK_FUNCTION_EXISTS=pthread_create /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"cmTC_2264f.dir\\Debug\\\\" /Fd"cmTC_2264f.dir\\Debug\\vc143.pdb" /external:W1 /Gd /TC /errorReport:queue "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-7ahf5t\\CheckFunctionExists.c"
+          cl /c /Zi /W1 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D CHECK_FUNCTION_EXISTS=pthread_create /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"cmTC_376a5.dir\\Debug\\\\" /Fd"cmTC_376a5.dir\\Debug\\vc143.pdb" /external:W1 /Gd /TC /errorReport:queue "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ewvzoc\\CheckFunctionExists.c"
           CheckFunctionExists.c
         Link:
-          C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\MSVC\\14.41.34120\\bin\\HostX64\\x64\\link.exe /ERRORREPORT:QUEUE /OUT:"D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-7ahf5t\\Debug\\cmTC_2264f.exe" /INCREMENTAL /ILK:"cmTC_2264f.dir\\Debug\\cmTC_2264f.ilk" /NOLOGO pthreads.lib kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server/build/CMakeFiles/CMakeScratch/TryCompile-7ahf5t/Debug/cmTC_2264f.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server/build/CMakeFiles/CMakeScratch/TryCompile-7ahf5t/Debug/cmTC_2264f.lib" /MACHINE:X64  /machine:x64 cmTC_2264f.dir\\Debug\\CheckFunctionExists.obj
-        LINK : fatal error LNK1104: cannot open file 'pthreads.lib' [D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-7ahf5t\\cmTC_2264f.vcxproj]
-        Done Building Project "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-7ahf5t\\cmTC_2264f.vcxproj" (default targets) -- FAILED.
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\MSVC\\14.41.34120\\bin\\HostX64\\x64\\link.exe /ERRORREPORT:QUEUE /OUT:"D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ewvzoc\\Debug\\cmTC_376a5.exe" /INCREMENTAL /ILK:"cmTC_376a5.dir\\Debug\\cmTC_376a5.ilk" /NOLOGO pthreads.lib kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server/build/CMakeFiles/CMakeScratch/TryCompile-ewvzoc/Debug/cmTC_376a5.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server/build/CMakeFiles/CMakeScratch/TryCompile-ewvzoc/Debug/cmTC_376a5.lib" /MACHINE:X64  /machine:x64 cmTC_376a5.dir\\Debug\\CheckFunctionExists.obj
+        LINK : fatal error LNK1104: cannot open file 'pthreads.lib' [D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ewvzoc\\cmTC_376a5.vcxproj]
+        Done Building Project "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ewvzoc\\cmTC_376a5.vcxproj" (default targets) -- FAILED.
         
         Build FAILED.
         
-        "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-7ahf5t\\cmTC_2264f.vcxproj" (default target) (1) ->
+        "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ewvzoc\\cmTC_376a5.vcxproj" (default target) (1) ->
         (Link target) -> 
-          LINK : fatal error LNK1104: cannot open file 'pthreads.lib' [D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-7ahf5t\\cmTC_2264f.vcxproj]
+          LINK : fatal error LNK1104: cannot open file 'pthreads.lib' [D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ewvzoc\\cmTC_376a5.vcxproj]
         
             0 Warning(s)
             1 Error(s)
         
-        Time Elapsed 00:00:00.41
+        Time Elapsed 00:00:00.47
         
       exitCode: 1
   -
@@ -458,8 +458,8 @@ events:
       - "C:/Users/chall/vcpkg/scripts/buildsystems/vcpkg.cmake:896 (_find_package)"
       - "CMakeLists.txt:20 (find_package)"
     directories:
-      source: "D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server/build/CMakeFiles/CMakeScratch/TryCompile-12lnhe"
-      binary: "D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server/build/CMakeFiles/CMakeScratch/TryCompile-12lnhe"
+      source: "D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server/build/CMakeFiles/CMakeScratch/TryCompile-mva6og"
+      binary: "D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server/build/CMakeFiles/CMakeScratch/TryCompile-mva6og"
     cmakeVariables:
       CMAKE_C_FLAGS: "/DWIN32 /D_WINDOWS"
       CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
@@ -473,37 +473,37 @@ events:
       variable: "CMAKE_HAVE_PTHREAD_CREATE"
       cached: true
       stdout: |
-        Change Dir: 'D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server/build/CMakeFiles/CMakeScratch/TryCompile-12lnhe'
+        Change Dir: 'D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server/build/CMakeFiles/CMakeScratch/TryCompile-mva6og'
         
-        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_e487c.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=17.0 /v:n
+        Run Build Command(s): "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_df48f.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=17.0 /v:n
         MSBuild version 17.11.9+a69bbaaf5 for .NET Framework
-        Build started 11-11-2025 3.21.26 PM.
+        Build started 03-02-2026 7.03.40 PM.
         
-        Project "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-12lnhe\\cmTC_e487c.vcxproj" on node 1 (default targets).
+        Project "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-mva6og\\cmTC_df48f.vcxproj" on node 1 (default targets).
         PrepareForBuild:
-          Creating directory "cmTC_e487c.dir\\Debug\\".
+          Creating directory "cmTC_df48f.dir\\Debug\\".
           Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
-          Creating directory "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-12lnhe\\Debug\\".
-          Creating directory "cmTC_e487c.dir\\Debug\\cmTC_e487c.tlog\\".
+          Creating directory "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-mva6og\\Debug\\".
+          Creating directory "cmTC_df48f.dir\\Debug\\cmTC_df48f.tlog\\".
         InitializeBuildStatus:
-          Creating "cmTC_e487c.dir\\Debug\\cmTC_e487c.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
-          Touching "cmTC_e487c.dir\\Debug\\cmTC_e487c.tlog\\unsuccessfulbuild".
+          Creating "cmTC_df48f.dir\\Debug\\cmTC_df48f.tlog\\unsuccessfulbuild" because "AlwaysCreate" was specified.
+          Touching "cmTC_df48f.dir\\Debug\\cmTC_df48f.tlog\\unsuccessfulbuild".
         ClCompile:
-          C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\MSVC\\14.41.34120\\bin\\HostX64\\x64\\CL.exe /c /Zi /W1 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D CHECK_FUNCTION_EXISTS=pthread_create /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"cmTC_e487c.dir\\Debug\\\\" /Fd"cmTC_e487c.dir\\Debug\\vc143.pdb" /external:W1 /Gd /TC /errorReport:queue "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-12lnhe\\CheckFunctionExists.c"
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\MSVC\\14.41.34120\\bin\\HostX64\\x64\\CL.exe /c /Zi /W1 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D CHECK_FUNCTION_EXISTS=pthread_create /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"cmTC_df48f.dir\\Debug\\\\" /Fd"cmTC_df48f.dir\\Debug\\vc143.pdb" /external:W1 /Gd /TC /errorReport:queue "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-mva6og\\CheckFunctionExists.c"
           Microsoft (R) C/C++ Optimizing Compiler Version 19.41.34120 for x64
           Copyright (C) Microsoft Corporation.  All rights reserved.
-          cl /c /Zi /W1 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D CHECK_FUNCTION_EXISTS=pthread_create /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"cmTC_e487c.dir\\Debug\\\\" /Fd"cmTC_e487c.dir\\Debug\\vc143.pdb" /external:W1 /Gd /TC /errorReport:queue "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-12lnhe\\CheckFunctionExists.c"
+          cl /c /Zi /W1 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D CHECK_FUNCTION_EXISTS=pthread_create /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"cmTC_df48f.dir\\Debug\\\\" /Fd"cmTC_df48f.dir\\Debug\\vc143.pdb" /external:W1 /Gd /TC /errorReport:queue "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-mva6og\\CheckFunctionExists.c"
           CheckFunctionExists.c
         Link:
-          C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\MSVC\\14.41.34120\\bin\\HostX64\\x64\\link.exe /ERRORREPORT:QUEUE /OUT:"D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-12lnhe\\Debug\\cmTC_e487c.exe" /INCREMENTAL /ILK:"cmTC_e487c.dir\\Debug\\cmTC_e487c.ilk" /NOLOGO pthread.lib kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server/build/CMakeFiles/CMakeScratch/TryCompile-12lnhe/Debug/cmTC_e487c.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server/build/CMakeFiles/CMakeScratch/TryCompile-12lnhe/Debug/cmTC_e487c.lib" /MACHINE:X64  /machine:x64 cmTC_e487c.dir\\Debug\\CheckFunctionExists.obj
-        LINK : fatal error LNK1104: cannot open file 'pthread.lib' [D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-12lnhe\\cmTC_e487c.vcxproj]
-        Done Building Project "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-12lnhe\\cmTC_e487c.vcxproj" (default targets) -- FAILED.
+          C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\MSVC\\14.41.34120\\bin\\HostX64\\x64\\link.exe /ERRORREPORT:QUEUE /OUT:"D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-mva6og\\Debug\\cmTC_df48f.exe" /INCREMENTAL /ILK:"cmTC_df48f.dir\\Debug\\cmTC_df48f.ilk" /NOLOGO pthread.lib kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server/build/CMakeFiles/CMakeScratch/TryCompile-mva6og/Debug/cmTC_df48f.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server/build/CMakeFiles/CMakeScratch/TryCompile-mva6og/Debug/cmTC_df48f.lib" /MACHINE:X64  /machine:x64 cmTC_df48f.dir\\Debug\\CheckFunctionExists.obj
+        LINK : fatal error LNK1104: cannot open file 'pthread.lib' [D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-mva6og\\cmTC_df48f.vcxproj]
+        Done Building Project "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-mva6og\\cmTC_df48f.vcxproj" (default targets) -- FAILED.
         
         Build FAILED.
         
-        "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-12lnhe\\cmTC_e487c.vcxproj" (default target) (1) ->
+        "D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-mva6og\\cmTC_df48f.vcxproj" (default target) (1) ->
         (Link target) -> 
-          LINK : fatal error LNK1104: cannot open file 'pthread.lib' [D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-12lnhe\\cmTC_e487c.vcxproj]
+          LINK : fatal error LNK1104: cannot open file 'pthread.lib' [D:\\Projects\\XHI2\\XenoCipher_Healthcare_IoT\\server\\build\\CMakeFiles\\CMakeScratch\\TryCompile-mva6og\\cmTC_df48f.vcxproj]
         
             0 Warning(s)
             1 Error(s)

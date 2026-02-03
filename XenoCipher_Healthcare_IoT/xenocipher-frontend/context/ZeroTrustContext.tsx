@@ -18,7 +18,7 @@ interface ZeroTrustContextType {
 
   // Actions
   verifyPasskey: (passkey: string) => Promise<boolean>
-  enableZeroTrust: () => void
+  enableZeroTrust: (passkey?: string) => void
   disableZeroTrust: () => void
 
   // Recipe management
@@ -77,7 +77,9 @@ export function ZeroTrustProvider({ children }: ZeroTrustProviderProps) {
   const [isPasskeyVerified, setIsPasskeyVerified] = useState(false)
 
   // Recipe state
+  // Note: this is UI state; the ESP32 is the source of truth. We reconcile on WS events.
   const [activeRecipe, setActiveRecipe] = useState<ZTMRecipeKey>('CHAOS_ONLY')
+  const [pendingRecipe, setPendingRecipe] = useState<ZTMRecipeKey | null>(null)
   const [lastSwitchReason, setLastSwitchReason] = useState<string | null>(null)
   const [lastSwitchTime, setLastSwitchTime] = useState<number | null>(null)
 
@@ -120,7 +122,7 @@ export function ZeroTrustProvider({ children }: ZeroTrustProviderProps) {
   }, [])
 
   // Enable ZTM
-  const enableZeroTrust = useCallback(() => {
+  const enableZeroTrust = useCallback((passkey?: string) => {
     console.log('[Zero Trust] 🚀 Activating Zero Trust Mode...')
 
     // Generate ephemeral session data
@@ -143,13 +145,17 @@ export function ZeroTrustProvider({ children }: ZeroTrustProviderProps) {
       threatLevel: 'yellow'
     })
     setIsZeroTrustMode(true)
-    setActiveRecipe('CHAOS_ONLY')
+    // Request baseline recipe; ESP32 will confirm via ztm_activation_acknowledged/ztm_status
+    setPendingRecipe('CHAOS_ONLY')
     setLastSwitchReason('ZTM activation - starting with baseline recipe')
     setLastSwitchTime(Date.now())
 
     // Send activation to backend
+    // Include passkey for server-side verification (default to '1234' if not provided)
+    const finalPasskey = passkey || process.env.NEXT_PUBLIC_ZTM_PASSKEY || '1234'
     sendMessage({
       type: 'ztm_activate_request',
+      passkey: finalPasskey,
       sessionKey,
       ephemeralIdentity,
       initialRecipe: 'CHAOS_ONLY'
@@ -183,6 +189,7 @@ export function ZeroTrustProvider({ children }: ZeroTrustProviderProps) {
     setIsZeroTrustMode(false)
     setIsPasskeyVerified(false)
     setActiveRecipe('CHAOS_ONLY')
+    setPendingRecipe(null)
     setLastSwitchReason(null)
     setLastSwitchTime(null)
     setHeuristics(DEFAULT_HEURISTICS)
@@ -203,7 +210,8 @@ export function ZeroTrustProvider({ children }: ZeroTrustProviderProps) {
     }
 
     const switchReason = reason || `Manual switch to ${recipe}`
-    setActiveRecipe(recipe)
+    // Do not immediately claim the recipe is active; wait for ESP32 confirmation
+    setPendingRecipe(recipe)
     setLastSwitchReason(switchReason)
     setLastSwitchTime(Date.now())
 
@@ -215,9 +223,9 @@ export function ZeroTrustProvider({ children }: ZeroTrustProviderProps) {
 
     addEventLog({
       type: 'recipe_switch',
-      message: `Switched to ${recipe}: ${switchReason}`,
+      message: `Switch requested → ${recipe}: ${switchReason}`,
       source: 'ztm',
-      details: { recipe, reason: switchReason }
+      details: { recipe, reason: switchReason, pending: true }
     })
 
     console.log(`[Zero Trust] ⚡ Recipe switched to ${recipe}: ${switchReason}`)
@@ -342,18 +350,35 @@ export function ZeroTrustProvider({ children }: ZeroTrustProviderProps) {
       case 'ztm_activation_acknowledged':
         if (data.success) {
           setZeroTrustData(prev => ({ ...prev, threatLevel: 'green' }))
+          // Prefer ESP32-provided recipe fields (currentRecipe/recipe)
+          const r = (data.currentRecipe || data.recipe) as string | undefined
+          if (r) {
+            const upper = String(r).toUpperCase()
+            if (['FULL_STACK', 'CHACHA_HEAVY', 'SALSA_LIGHT', 'CHAOS_ONLY', 'STREAM_FOCUS'].includes(upper)) {
+              setActiveRecipe(upper as ZTMRecipeKey)
+              setPendingRecipe(null)
+            }
+          }
           addEventLog({
             type: 'success',
-            message: 'Server acknowledged ZTM activation',
+            message: `ZTM activation acknowledged (recipe=${(data.currentRecipe || data.recipe || 'unknown')})`,
+            source: 'server'
+          })
+        } else {
+          setPendingRecipe(null)
+          addEventLog({
+            type: 'error',
+            message: `ZTM activation rejected: ${data.error || 'unknown error'}`,
             source: 'server'
           })
         }
         break
 
       case 'adaptive_switch_acknowledged':
+        // This is a broadcast; treat as informational (ESP32 will emit recipe_switched on commit)
         addEventLog({
-          type: 'success',
-          message: `Recipe switch to ${data.recipe} acknowledged`,
+          type: data.success === false ? 'warning' : 'info',
+          message: `Switch ack broadcast: mode=${data.mode || 'ztm'} recipe=${data.recipe || 'unknown'} success=${data.success !== false}`,
           source: 'server'
         })
         break
@@ -380,6 +405,49 @@ export function ZeroTrustProvider({ children }: ZeroTrustProviderProps) {
           setLastSwitchTime(Date.now())
         }
         break
+
+      case 'ztm_status': {
+        // ESP32 periodic/current status (source of truth)
+        const enabled = !!data.ztmEnabled
+        const r = (data.currentRecipe || data.recipe) as string | undefined
+        if (enabled) {
+          setIsZeroTrustMode(true)
+          if (r) {
+            const upper = String(r).toUpperCase()
+            if (['FULL_STACK', 'CHACHA_HEAVY', 'SALSA_LIGHT', 'CHAOS_ONLY', 'STREAM_FOCUS'].includes(upper)) {
+              setActiveRecipe(upper as ZTMRecipeKey)
+              setPendingRecipe(null)
+            }
+          }
+        } else {
+          // If ESP32 says disabled, reflect that (even if UI thought active)
+          setIsZeroTrustMode(false)
+          setPendingRecipe(null)
+        }
+        break
+      }
+
+      case 'recipe_switched': {
+        // ESP32 commit event (authoritative)
+        const newR = (data.newRecipe || data.recipe || data.currentRecipe) as string | undefined
+        const oldR = (data.oldRecipe) as string | undefined
+        const reason = (data.reason) as string | undefined
+        if (newR) {
+          const upper = String(newR).toUpperCase()
+          if (['FULL_STACK', 'CHACHA_HEAVY', 'SALSA_LIGHT', 'CHAOS_ONLY', 'STREAM_FOCUS'].includes(upper)) {
+            setActiveRecipe(upper as ZTMRecipeKey)
+            setPendingRecipe(null)
+            setLastSwitchReason(reason || `Switched to ${upper}`)
+            setLastSwitchTime(Date.now())
+            addEventLog({
+              type: 'recipe_switch',
+              message: `Recipe committed: ${oldR ? `${oldR} → ` : ''}${upper}${reason ? ` (${reason})` : ''}`,
+              source: 'esp32'
+            })
+          }
+        }
+        break
+      }
 
       case 'security_update':
         if (data.decrypt_failures !== undefined || data.hmac_failures !== undefined) {

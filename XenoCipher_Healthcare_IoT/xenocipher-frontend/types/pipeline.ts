@@ -1,7 +1,7 @@
 // types/pipeline.ts
 
 // Base pipeline step types
-export type PipelineStep = 
+export type PipelineStep =
   | 'idle'
   | 'requesting_public_key'
   | 'encrypting_master_key'
@@ -139,7 +139,7 @@ export type ThreatLevel = 'green' | 'yellow' | 'red'
 
 export interface ZeroTrustContextType {
   isZeroTrustMode: boolean
-  enableZeroTrust: () => void
+  enableZeroTrust: (passkey?: string) => void
   disableZeroTrust: () => void
   zeroTrustData: {
     sessionKey?: string

@@ -185,8 +185,8 @@ CMAKE_STATIC_LINKER_FLAGS_RELEASE:STRING=
 // during RELWITHDEBINFO builds.
 CMAKE_STATIC_LINKER_FLAGS_RELWITHDEBINFO:STRING=
 
-//No help, variable specified on the command line.
-CMAKE_TOOLCHAIN_FILE:UNINITIALIZED=C:/Users/chall/vcpkg/scripts/buildsystems/vcpkg.cmake
+//The CMake toolchain file
+CMAKE_TOOLCHAIN_FILE:FILEPATH=C:/Users/chall/vcpkg/scripts/buildsystems/vcpkg.cmake
 
 //If this value is on, makefiles will be generated without the
 // .SILENT directive, and all commands will be echoed to the console
@@ -265,7 +265,7 @@ XenoCipherServer_IS_TOP_LEVEL:STATIC=ON
 XenoCipherServer_SOURCE_DIR:STATIC=D:/Projects/XHI2/XenoCipher_Healthcare_IoT/server
 
 //Path to a program.
-Z_VCPKG_BUILTIN_POWERSHELL_PATH:FILEPATH=C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe
+Z_VCPKG_BUILTIN_POWERSHELL_PATH:FILEPATH=C:/WINDOWS/System32/WindowsPowerShell/v1.0/powershell.exe
 
 //Path to a program.
 Z_VCPKG_PWSH_PATH:FILEPATH=Z_VCPKG_PWSH_PATH-NOTFOUND
@@ -441,7 +441,7 @@ VCPKG_VERBOSE-ADVANCED:INTERNAL=1
 //Making sure VCPKG_MANIFEST_MODE doesn't change
 Z_VCPKG_CHECK_MANIFEST_MODE:INTERNAL=OFF
 //The path to the PowerShell implementation to use.
-Z_VCPKG_POWERSHELL_PATH:INTERNAL=C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe
+Z_VCPKG_POWERSHELL_PATH:INTERNAL=C:/WINDOWS/System32/WindowsPowerShell/v1.0/powershell.exe
 //Vcpkg root directory
 Z_VCPKG_ROOT_DIR:INTERNAL=C:/Users/chall/vcpkg
 

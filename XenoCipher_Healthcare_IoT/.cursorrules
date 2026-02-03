@@ -1,0 +1,15 @@
+# XenoCipher Healthcare IoT – Primary project directory
+
+**Apply all code changes to this directory only.**
+
+- **Project path:** `D:\Projects\XHI2\XenoCipher_Healthcare_IoT`
+- **Do not** apply changes to C: drive worktrees (e.g. `C:\Users\...\worktrees\XenoCipher_Healthcare_IoT\shm`).
+
+When editing server code, use:
+- `D:\Projects\XHI2\XenoCipher_Healthcare_IoT\server\api\ztm_handlers.h`
+- `D:\Projects\XHI2\XenoCipher_Healthcare_IoT\server\main.cpp`
+
+When editing device/firmware code, use:
+- `D:\Projects\XHI2\XenoCipher_Healthcare_IoT\src\main.cpp`
+
+Always use the D: path for any file creates, edits, or references in this project.

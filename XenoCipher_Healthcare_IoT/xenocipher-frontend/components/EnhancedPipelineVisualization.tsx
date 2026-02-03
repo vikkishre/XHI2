@@ -111,13 +111,12 @@ function Header({ onZeroTrustToggle }: { onZeroTrustToggle: () => void }) {
 function PipelineStep({ step, index, isActive, isCompleted, isUpcoming }: any) {
   return (
     <MotionDiv
-      className={`flex items-center space-x-4 p-4 rounded-xl border-2 transition-all duration-300 ${
-        isActive
+      className={`flex items-center space-x-4 p-4 rounded-xl border-2 transition-all duration-300 ${isActive
           ? 'border-cyan-500 bg-cyan-500/10 shadow-lg shadow-cyan-500/25'
           : isCompleted
-          ? 'border-green-500 bg-green-500/10'
-          : 'border-gray-600 bg-gray-700/30'
-      }`}
+            ? 'border-green-500 bg-green-500/10'
+            : 'border-gray-600 bg-gray-700/30'
+        }`}
       whileHover={{ scale: 1.02 }}
       initial={{ opacity: 0, x: -20 }}
       animate={{ opacity: 1, x: 0 }}
@@ -125,13 +124,12 @@ function PipelineStep({ step, index, isActive, isCompleted, isUpcoming }: any) {
       style={{ pointerEvents: 'auto' }}
     >
       <MotionDiv
-        className={`w-12 h-12 rounded-full flex items-center justify-center text-xl font-bold ${
-          isActive
+        className={`w-12 h-12 rounded-full flex items-center justify-center text-xl font-bold ${isActive
             ? 'bg-cyan-500 text-white'
             : isCompleted
-            ? 'bg-green-500 text-white'
-            : 'bg-gray-600 text-gray-400'
-        }`}
+              ? 'bg-green-500 text-white'
+              : 'bg-gray-600 text-gray-400'
+          }`}
         animate={isActive ? { scale: [1, 1.1, 1] } : {}}
         transition={{ duration: 2, repeat: isActive ? Infinity : 0 }}
       >
@@ -139,13 +137,12 @@ function PipelineStep({ step, index, isActive, isCompleted, isUpcoming }: any) {
       </MotionDiv>
       <div className="flex-1">
         <h4
-          className={`font-semibold ${
-            isActive
+          className={`font-semibold ${isActive
               ? 'text-cyan-400'
               : isCompleted
-              ? 'text-green-400'
-              : 'text-gray-400'
-          }`}
+                ? 'text-green-400'
+                : 'text-gray-400'
+            }`}
         >
           {step.title}
         </h4>
@@ -189,11 +186,10 @@ function CurrentStepDisplay({ pipelineData }: { pipelineData: any }) {
             className="h-3 bg-gradient-to-r from-cyan-500 to-green-500 rounded-full"
             initial={{ width: 0 }}
             animate={{
-              width: `${
-                (steps.findIndex(s => s.id === pipelineData.currentStep) /
+              width: `${(steps.findIndex(s => s.id === pipelineData.currentStep) /
                   (steps.length - 1)) *
                 100
-              }%`,
+                }%`,
             }}
             transition={{ duration: 1, ease: 'easeOut' }}
           />
@@ -237,14 +233,12 @@ function DataCard({ title, data, status, type }: any) {
       <div className="flex items-center justify-between mb-4">
         <h4 className="text-lg font-bold text-cyan-400">{title}</h4>
         <div
-          className={`flex items-center space-x-2 ${
-            status === 'connected' ? 'text-green-400' : 'text-red-400'
-          }`}
+          className={`flex items-center space-x-2 ${status === 'connected' ? 'text-green-400' : 'text-red-400'
+            }`}
         >
           <MotionDiv
-            className={`w-2 h-2 rounded-full ${
-              status === 'connected' ? 'bg-green-400' : 'bg-red-400'
-            }`}
+            className={`w-2 h-2 rounded-full ${status === 'connected' ? 'bg-green-400' : 'bg-red-400'
+              }`}
             animate={status === 'connected' ? { scale: [1, 1.5, 1] } : {}}
             transition={{ duration: 2, repeat: Infinity }}
           />
@@ -271,9 +265,8 @@ function DataCard({ title, data, status, type }: any) {
               </div>
             ) : (
               <code
-                className={`font-mono text-sm break-all ${
-                  isEncrypted ? 'text-cyan-300' : 'text-green-300'
-                }`}
+                className={`font-mono text-sm break-all ${isEncrypted ? 'text-cyan-300' : 'text-green-300'
+                  }`}
               >
                 {displayData}
               </code>
@@ -339,34 +332,30 @@ function EncryptionPipeline({ pipelineData }: any) {
             style={{ pointerEvents: 'auto' }}
           >
             <MotionDiv
-              className={`w-16 h-16 rounded-full border-4 flex items-center justify-center mb-2 ${
-                stage.active
+              className={`w-16 h-16 rounded-full border-4 flex items-center justify-center mb-2 ${stage.active
                   ? 'border-cyan-500 bg-cyan-500/20 shadow-lg shadow-cyan-500/25'
                   : 'border-gray-600 bg-gray-700/50'
-              }`}
+                }`}
               animate={stage.active ? { scale: [1, 1.1, 1] } : {}}
               transition={{ duration: 2, repeat: stage.active ? Infinity : 0 }}
             >
               <span
-                className={`font-bold ${
-                  stage.active ? 'text-cyan-400' : 'text-gray-500'
-                }`}
+                className={`font-bold ${stage.active ? 'text-cyan-400' : 'text-gray-500'
+                  }`}
               >
                 {index + 1}
               </span>
             </MotionDiv>
             <span
-              className={`text-sm font-medium ${
-                stage.active ? 'text-cyan-400' : 'text-gray-500'
-              }`}
+              className={`text-sm font-medium ${stage.active ? 'text-cyan-400' : 'text-gray-500'
+                }`}
             >
               {stage.name}
             </span>
             {index < stages.length - 1 && (
               <MotionDiv
-                className={`h-1 w-16 mt-8 ${
-                  stage.active ? 'bg-cyan-500' : 'bg-gray-600'
-                }`}
+                className={`h-1 w-16 mt-8 ${stage.active ? 'bg-cyan-500' : 'bg-gray-600'
+                  }`}
                 initial={{ scaleX: 0 }}
                 animate={{ scaleX: stage.active ? 1 : 0 }}
                 transition={{ duration: 0.5, delay: index * 0.2 }}
@@ -419,7 +408,7 @@ function HealthDataDisplay({ healthData }: { healthData?: any }) {
 // MAIN COMPONENT WITH SIMPLIFIED, WORKING BUTTONS
 function EnhancedPipelineVisualization({ onZeroTrustToggle }: { onZeroTrustToggle: () => void }) {
   const { pipelineData, startPipeline, resetPipeline, messageHistory, logs } = usePipeline()
-  
+
   const [showEncryptionDetails, setShowEncryptionDetails] = useState(false)
   const [showDecryptionDetails, setShowDecryptionDetails] = useState(false)
   const [encryptionDetails, setEncryptionDetails] = useState<EncryptionDetails | null>(null)
@@ -555,14 +544,14 @@ function EnhancedPipelineVisualization({ onZeroTrustToggle }: { onZeroTrustToggl
   }
 
   // Use logs from context if available, otherwise fall back to converting messageHistory
-  const displayLogs = logs && logs.length > 0 
-    ? logs 
+  const displayLogs = logs && logs.length > 0
+    ? logs
     : convertMessageHistoryToLogs(messageHistory)
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 p-8" style={{ pointerEvents: 'auto' }}>
       <Header onZeroTrustToggle={onZeroTrustToggle} />
-      
+
       <div className="container mx-auto max-w-7xl" style={{ pointerEvents: 'auto' }}>
         {/* SIMPLIFIED BUTTON SECTION - NO COMPLEX CONDITIONALS */}
         <MotionDiv
@@ -644,7 +633,7 @@ function EnhancedPipelineVisualization({ onZeroTrustToggle }: { onZeroTrustToggl
               <h3 className="text-xl font-bold text-cyan-400 mb-6">Pipeline Progress</h3>
               <div className="space-y-4">
                 {steps.map((step, index) => (
-                  <PipelineStep 
+                  <PipelineStep
                     key={step.id}
                     step={step}
                     index={index}
@@ -669,13 +658,13 @@ function EnhancedPipelineVisualization({ onZeroTrustToggle }: { onZeroTrustToggl
             </MotionDiv>
             {/* Data Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <DataCard 
+              <DataCard
                 title="ESP32 Data"
                 data={pipelineData.esp32Data?.plaintext}
                 status={pipelineData.esp32Connected ? 'connected' : 'disconnected'}
                 type="original"
               />
-              <DataCard 
+              <DataCard
                 title="Server Data"
                 data={pipelineData.serverData?.decryptedData}
                 status={pipelineData.serverConnected ? 'connected' : 'disconnected'}

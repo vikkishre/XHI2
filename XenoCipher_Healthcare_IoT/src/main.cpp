@@ -25,8 +25,8 @@
 #include "../lib/Salsa20/include/salsa20_impl.h"
 
 // Configuration
-#define SERVER_URL "http://10.45.98.115:8081"
-#define WS_SERVER "192.168.230.103"  // WebSocket server IP
+#define SERVER_URL "http://10.249.92.115:8081"
+#define WS_SERVER "10.249.92.115"   // WebSocket server IP - MUST match SERVER_URL
 #define WS_PORT 8081                 // WebSocket server port
 #define WS_PATH "/api/ws"            // WebSocket path
 #define WIFI_SSID "motorola edge 40_6753" //Galaxy M322E19"
@@ -38,6 +38,19 @@
 #define HMAC_TAG_LEN 16
 #define VERSION_BASE 0x01
 #define VERSION_NONCE_EXT 0x81
+#define VERSION_ZTM 0xC1  // 0x80 (nonce ext) + 0x40 (ZTM recipe) + 0x01 (base)
+#define VERSION_RECIPE_ID 0x82   // packet has recipeId at byte 8; server uses same pipeline (4B)
+#define RECIPE_ID_FULL_STACK    1
+#define RECIPE_ID_CHACHA_HEAVY  2
+#define RECIPE_ID_SALSA_LIGHT   3
+#define RECIPE_ID_CHAOS_ONLY    4
+#define RECIPE_ID_STREAM_FOCUS  5
+#define RECIPE_MAP_VERSION 1
+
+// Two-Phase Commit constants (exact per spec)
+#define ACK_TIMEOUT_MS 3000
+#define COMMIT_TIMEOUT_MS 5000
+#define SWITCH_MAX_RETRIES 3
 
 // NVS keys
 #define NVS_NAMESPACE "xenocipher"
@@ -101,7 +114,7 @@ struct PipelineLayer {
   char hex[512];
   size_t dataLen;
 };
-static PipelineLayer capturedLayers[7];
+static PipelineLayer capturedLayers[9]; 
 static int capturedLayerIndex = 0;
 static bool capturingLayers = false;
 static char currentPlaintext[128];
@@ -133,12 +146,45 @@ struct HeuristicsState {
 };
 
 static OperationalMode gCurrentMode = OperationalMode::NORMAL;
-static ZTMRecipe gCurrentRecipe = ZTMRecipe::FULL_STACK;
+// NOTE: In NORMAL mode the "recipe" concept is purely cosmetic – algorithms are
+// always LFSR + Tinkerbell + Transposition. We treat CHAOS_ONLY as the
+// baseline recipe label for logging and for ZTM activation defaults.
+static ZTMRecipe gCurrentRecipe = ZTMRecipe::CHAOS_ONLY;
 static bool gModeChangePending = false;
 static bool gZTMEnabled = false;
 static HeuristicsState gHeuristics = {0, 0, 0, 0, 0, 0, 0, 0};
 static uint32_t gLastRecipeSwitchTime = 0;
 static const uint32_t RECIPE_SWITCH_COOLDOWN_MS = 5000; // 5 second cooldown
+static bool gManualOverrideActive = false; // Prevents auto-switching after manual change
+static uint32_t gManualOverrideUntil = 0;   // Timestamp when manual override expires
+static const uint32_t MANUAL_OVERRIDE_DURATION_MS = 60000; // 60 seconds override
+
+// Two-Phase Commit state machine
+enum class SwitchState { NORMAL, PROPOSE_RECEIVED, ACK_SENT, COMMITTED_PENDING };
+static SwitchState gSwitchState = SwitchState::NORMAL;
+static uint32_t gCurrentEpoch = 1;       // device epoch (monotonic)
+static uint64_t gLastCommitNonce = 0;   // last applied commitNonce
+static uint32_t gPacketCounter = 0;     // packets sent in current epoch; txNonce = (epoch<<32)|counter
+
+struct PendingProposal {
+  bool active;
+  String proposalId;
+  uint32_t epoch;
+  ZTMRecipe targetRecipe;
+  uint64_t commitNonce;
+  unsigned long commitWaitStartMs;
+};
+static PendingProposal gPendingProposal = { false, "", 0, ZTMRecipe::CHAOS_ONLY, 0, 0 };
+
+// Forward declarations for ZTM control message functions (new payload/signature format)
+static String canonicalizePayload(JsonObject payload);
+static String computeHmacHex(const uint8_t* key, size_t keyLen, const String& canonicalStr);
+static bool verifyPayloadHmac(JsonObject payload, const String& expectedSig);
+static void sendSwitchAck(const String& proposalId, uint32_t epoch, uint32_t lastSeenNonce);
+static void sendSwitchNack(const String& proposalId, const String& reason, uint32_t currentEpoch);
+static void sendSwitchDone(const String& proposalId, uint64_t commitNonce, uint32_t epoch);
+static void applyRecipeIfCommitBoundary();  // call before each packet send
+static void applyRecipe(const char* recipeName);
 
 // ============================================================================
 // FORWARD DECLARATIONS - ADD THESE
@@ -273,12 +319,15 @@ bool send_health_data_with_retry() {
     
     Serial.printf("[RETRY] Attempting to send health data (Max retries: %d)\n", max_retries);
     
+    // Two-Phase Commit: apply at packet boundary when txNonce >= commitNonce (before getting nonce)
+    applyRecipeIfCommitBoundary();
+
     // Get nonce ONCE before retry loop - use same nonce for all retries
-    // Save current nonce state before incrementing
     uint32_t saved_nonce = gDeviceNonceTracker.lastNonce;
     uint32_t nonce_to_use = nonce_tracker_get_next(&gDeviceNonceTracker);
+    gPacketCounter = nonce_to_use;  // txNonce = (gCurrentEpoch<<32)|gPacketCounter
     Serial.printf("[RETRY] Using nonce %u for all retry attempts (saved: %u)\n", nonce_to_use, saved_nonce);
-    
+
     // CRITICAL FIX: Generate health data and encrypt ONCE before retry loop
     // This ensures all retries use the SAME ciphertext for the same nonce
     if (!masterKeyReady) {
@@ -401,7 +450,7 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
         statusDoc["type"] = "ztm_status";
         statusDoc["ztmEnabled"] = gZTMEnabled;
         statusDoc["currentMode"] = (gCurrentMode == OperationalMode::ZTM) ? "ztm" : "normal";
-        statusDoc["currentRecipe"] = recipeToString(gCurrentRecipe).c_str();
+        statusDoc["currentRecipe"] = recipeToString(gCurrentRecipe);
         statusDoc["hmacFailures"] = gHeuristics.hmacFailures;
         statusDoc["decryptFailures"] = gHeuristics.decryptFailures;
         statusDoc["replayAttempts"] = gHeuristics.replayAttempts;
@@ -457,55 +506,260 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
             Serial.printf("[WebSocket] Health data - HR: %d, SPO2: %d, Steps: %d\n", hr, spo2, steps);
           }
         }
-        else if (msgType == "ztm_activate_request") {
-          // Handle ZTM activation - NO PASSCODE REQUIRED
+        else if (msgType == "ztm_activate_request" || msgType == "ztm_activation_acknowledged") {
+          // Handle ZTM activation from either:
+          // 1. Direct request (ztm_activate_request) - from frontend, requires ack response
+          // 2. Server broadcast (ztm_activation_acknowledged) - from server, NO ack needed (prevents loop!)
+          bool isFromFrontend = (msgType == "ztm_activate_request");
+          
+          // Check if it's an acknowledgment with success=false
+          if (msgType == "ztm_activation_acknowledged" && doc.containsKey("success")) {
+            bool success = doc["success"] | false;
+            if (!success) {
+              Serial.println("[WebSocket] ZTM activation failed on server - not activating locally");
+              return;
+            }
+          }
+          
           Serial.println("[WebSocket] ========================================");
-          Serial.println("[WebSocket] ZTM ACTIVATION REQUEST RECEIVED");
+          Serial.printf("[WebSocket] ZTM ACTIVATION RECEIVED (type: %s, fromFrontend: %s)\n", msgType.c_str(), isFromFrontend ? "YES" : "NO");
           Serial.println("[WebSocket] ========================================");
           
+          // Parse requested initial recipe (frontend may send initialRecipe or recipe)
+          // If not provided, default to CHAOS_ONLY (baseline).
+          String requestedRecipe = doc["initialRecipe"] | (doc["recipe"] | "");
+          requestedRecipe.trim();
+          String requestedRecipeUpper = requestedRecipe;
+          requestedRecipeUpper.toUpperCase();
+
+          ZTMRecipe initialRecipe = ZTMRecipe::CHAOS_ONLY;
+          if (requestedRecipe.length() > 0) {
+            if (requestedRecipeUpper == "FULL_STACK") initialRecipe = ZTMRecipe::FULL_STACK;
+            else if (requestedRecipeUpper == "CHACHA_HEAVY") initialRecipe = ZTMRecipe::CHACHA_HEAVY;
+            else if (requestedRecipeUpper == "SALSA_LIGHT") initialRecipe = ZTMRecipe::SALSA_LIGHT;
+            else if (requestedRecipeUpper == "CHAOS_ONLY") initialRecipe = ZTMRecipe::CHAOS_ONLY;
+            else if (requestedRecipeUpper == "STREAM_FOCUS") initialRecipe = ZTMRecipe::STREAM_FOCUS;
+            else {
+              Serial.printf("[WebSocket][ZTM] Unknown initialRecipe='%s' (defaulting to CHAOS_ONLY)\n",
+                            requestedRecipe.c_str());
+            }
+          }
+
           // CRITICAL: Activate ZTM immediately - Normal Mode encryption will stop
+          // If we receive duplicate activation while already in ZTM, treat it as a sync message:
+          // only override the recipe if one was explicitly provided.
+          bool wasAlreadyEnabled = gZTMEnabled && (gCurrentMode == OperationalMode::ZTM);
           gCurrentMode = OperationalMode::ZTM;
           gZTMEnabled = true;
-          gCurrentRecipe = ZTMRecipe::FULL_STACK; // Default to FULL_STACK on activation
+          if (!wasAlreadyEnabled || requestedRecipe.length() > 0) {
+            gCurrentRecipe = initialRecipe;
+          }
           
           saveZTMSettings();
           
           Serial.println("[WebSocket] ✓ ZTM activated successfully");
           Serial.println("[WebSocket] ✓ Normal Mode encryption STOPPED");
           Serial.println("[WebSocket] ✓ ZTM encryption pipeline ACTIVE");
-          Serial.println("[WebSocket] ✓ Current recipe: FULL_STACK");
+          Serial.printf("[WebSocket] ✓ Current recipe: %s\n", recipeToString(gCurrentRecipe).c_str());
           Serial.println("[WebSocket] ========================================");
           
-          // Acknowledge activation with full status
-          DynamicJsonDocument ackDoc(1024);
-          ackDoc["type"] = "ztm_activation_acknowledged";
-          ackDoc["success"] = true;
-          ackDoc["mode"] = "ztm";
-          ackDoc["recipe"] = recipeToString(gCurrentRecipe).c_str();
-          ackDoc["deviceId"] = String((uint32_t)ESP.getEfuseMac(), HEX);
-          ackDoc["timestamp"] = millis();
-          // Include full ZTM status
-          ackDoc["ztmEnabled"] = true;
-          ackDoc["currentMode"] = "ztm";
-          ackDoc["currentRecipe"] = recipeToString(gCurrentRecipe).c_str();
-          ackDoc["hmacFailures"] = gHeuristics.hmacFailures;
-          ackDoc["decryptFailures"] = gHeuristics.decryptFailures;
-          ackDoc["replayAttempts"] = gHeuristics.replayAttempts;
-          ackDoc["malformedPackets"] = gHeuristics.malformedPackets;
-          ackDoc["timingAnomalies"] = gHeuristics.timingAnomalies;
-          
-          String ackStr;
-          serializeJson(ackDoc, ackStr);
-          webSocket.sendTXT(ackStr);
-          
-          Serial.printf("[WebSocket] ZTM activation acknowledged sent: %s\n", ackStr.c_str());
+          // ONLY send acknowledgment for direct frontend requests (ztm_activate_request)
+          // Do NOT reply to server's ztm_activation_acknowledged to prevent infinite loop!
+          if (isFromFrontend) {
+            DynamicJsonDocument ackDoc(1024);
+            ackDoc["type"] = "ztm_activation_acknowledged";
+            ackDoc["success"] = true;
+            ackDoc["mode"] = "ztm";
+            ackDoc["recipe"] = recipeToString(gCurrentRecipe);
+            ackDoc["deviceId"] = String((uint32_t)ESP.getEfuseMac(), HEX);
+            ackDoc["timestamp"] = millis();
+            // Include full ZTM status
+            ackDoc["ztmEnabled"] = true;
+            ackDoc["currentMode"] = "ztm";
+            ackDoc["currentRecipe"] = recipeToString(gCurrentRecipe);
+            ackDoc["hmacFailures"] = gHeuristics.hmacFailures;
+            ackDoc["decryptFailures"] = gHeuristics.decryptFailures;
+            ackDoc["replayAttempts"] = gHeuristics.replayAttempts;
+            ackDoc["malformedPackets"] = gHeuristics.malformedPackets;
+            ackDoc["timingAnomalies"] = gHeuristics.timingAnomalies;
+            
+            String ackStr;
+            serializeJson(ackDoc, ackStr);
+            webSocket.sendTXT(ackStr);
+            
+            Serial.printf("[WebSocket] ZTM activation acknowledged sent: %s\n", ackStr.c_str());
+          } else {
+            Serial.println("[WebSocket] Received server ack - not sending duplicate ack (prevents loop)");
+          }
           
           sendWebSocketUpdate("ztm_activated", "Zero Trust Mode activated successfully");
         }
-        else if (msgType == "ztm_deactivate_request") {
-          // Handle ZTM deactivation - Revert to Normal Mode
+        else if (msgType == "switch_propose") {
+          if (!gZTMEnabled || gCurrentMode != OperationalMode::ZTM) {
+            Serial.println("[PROPOSE_REJECT] ZTM not active");
+            return;
+          }
+          
+          // Parse new payload/signature format
+          String proposalId, targetRecipe, proposedAt, signature;
+          uint32_t epoch = 0;
+          
+          if (doc.containsKey("payload") && doc.containsKey("signature")) {
+            // New format: { "type", "payload": {...}, "signature": "..." }
+            JsonObject payload = doc["payload"];
+            proposalId = payload["proposalId"] | "";
+            targetRecipe = payload["targetRecipe"] | "";
+            epoch = payload["epoch"] | 0;
+            proposedAt = payload["proposedAt"] | "";
+            signature = doc["signature"] | "";
+            
+            Serial.printf("[WS_RX] switch_propose (new format) proposalId=%s targetRecipe=%s epoch=%u\n",
+                          proposalId.c_str(), targetRecipe.c_str(), epoch);
+            
+            // Verify HMAC over payload
+            if (!verifyPayloadHmac(payload, signature)) {
+              Serial.println("[PROPOSE_REJECT] HMAC verification failed");
+              sendSwitchNack(proposalId, "invalid_signature", gCurrentEpoch);
+              return;
+            }
+          } else {
+            // Legacy flat format (backwards compatibility)
+            proposalId = doc["proposalId"] | "";
+            targetRecipe = doc["targetRecipe"] | "";
+            epoch = doc["epoch"] | 0;
+            String hmacVal = doc["hmac"] | "";
+            
+            Serial.printf("[WS_RX] switch_propose (legacy format) proposalId=%s\n", proposalId.c_str());
+            
+            // For legacy, just log a warning - can't verify without the old canonical format
+            Serial.println("[PROPOSE_REJECT] Legacy format not supported in new protocol");
+            sendSwitchNack(proposalId, "use_new_format", gCurrentEpoch);
+            return;
+          }
+          
+          if (proposalId.length() == 0 || targetRecipe.length() == 0) {
+            Serial.println("[PROPOSE_REJECT] missing_fields");
+            sendSwitchNack(proposalId, "missing_fields", gCurrentEpoch);
+            return;
+          }
+          
+          if (epoch < gCurrentEpoch) {
+            Serial.printf("[PROPOSE_REJECT] stale epoch: propose=%u device=%u\n", epoch, gCurrentEpoch);
+            sendSwitchNack(proposalId, "epoch_too_low", gCurrentEpoch);
+            return;
+          }
+          
+          if (gSwitchState != SwitchState::NORMAL && gPendingProposal.proposalId != proposalId) {
+            Serial.println("[PROPOSE_REJECT] overlapping transaction");
+            sendSwitchNack(proposalId, "overlapping", gCurrentEpoch);
+            return;
+          }
+          
+          targetRecipe.toUpperCase();
+          ZTMRecipe target = ZTMRecipe::CHAOS_ONLY;
+          if (targetRecipe == "FULL_STACK") target = ZTMRecipe::FULL_STACK;
+          else if (targetRecipe == "CHACHA_HEAVY") target = ZTMRecipe::CHACHA_HEAVY;
+          else if (targetRecipe == "SALSA_LIGHT") target = ZTMRecipe::SALSA_LIGHT;
+          else if (targetRecipe == "CHAOS_ONLY") target = ZTMRecipe::CHAOS_ONLY;
+          else if (targetRecipe == "STREAM_FOCUS") target = ZTMRecipe::STREAM_FOCUS;
+
+          gPendingProposal.active = true;
+          gPendingProposal.proposalId = proposalId;
+          gPendingProposal.epoch = epoch;
+          gPendingProposal.targetRecipe = target;
+          gPendingProposal.commitNonce = 0;
+          gPendingProposal.commitWaitStartMs = millis();
+          gSwitchState = SwitchState::PROPOSE_RECEIVED;
+          
+          // Send ack with new format (epoch, lastSeenNonce)
+          sendSwitchAck(proposalId, epoch, (uint32_t)gDeviceNonceTracker.lastNonce);
+          gSwitchState = SwitchState::ACK_SENT;
+          
+          Serial.printf("[PROPOSE_ACCEPT] proposalId=%s epoch=%u targetRecipe=%s\n", 
+                        proposalId.c_str(), epoch, targetRecipe.c_str());
+        }
+        else if (msgType == "switch_commit") {
+          String proposalId, committedAt, signature;
+          uint64_t commitNonce = 0;
+          uint32_t commitEpoch = 0;
+          
+          if (doc.containsKey("payload") && doc.containsKey("signature")) {
+            // New format: { "type", "payload": {...}, "signature": "..." }
+            JsonObject payload = doc["payload"];
+            proposalId = payload["proposalId"] | "";
+            committedAt = payload["committedAt"] | "";
+            commitEpoch = payload["epoch"] | 0;
+            signature = doc["signature"] | "";
+            
+            // Handle commitNonce which might be a large number
+            if (payload["commitNonce"].is<unsigned long long>())
+              commitNonce = payload["commitNonce"].as<unsigned long long>();
+            else if (payload["commitNonce"].is<unsigned long>())
+              commitNonce = (uint64_t)payload["commitNonce"].as<unsigned long>();
+            else
+              commitNonce = (uint64_t)(payload["commitNonce"] | 0);
+            
+            Serial.printf("[WS_RX] switch_commit (new format) proposalId=%s commitNonce=%llu\n",
+                          proposalId.c_str(), (unsigned long long)commitNonce);
+            
+            // Verify HMAC over payload
+            if (!verifyPayloadHmac(payload, signature)) {
+              Serial.println("[COMMIT_REJECT] HMAC verification failed");
+              return;
+            }
+          } else {
+            // Legacy flat format  
+            proposalId = doc["proposalId"] | "";
+            if (doc["commitNonce"].is<unsigned long long>())
+              commitNonce = doc["commitNonce"].as<unsigned long long>();
+            else if (doc["commitNonce"].is<unsigned long>())
+              commitNonce = (uint64_t)doc["commitNonce"].as<unsigned long>();
+            else
+              commitNonce = (uint64_t)(doc["commitNonce"] | 0);
+            
+            Serial.printf("[WS_RX] switch_commit (legacy format) proposalId=%s\n", proposalId.c_str());
+            Serial.println("[COMMIT_REJECT] Legacy format not supported");
+            return;
+          }
+          
+          if (proposalId.length() == 0) return;
+          
+          if (!gPendingProposal.active || gPendingProposal.proposalId != proposalId) {
+            Serial.printf("[COMMIT_REJECT] unknown proposalId=%s (pending=%s)\n", 
+                          proposalId.c_str(), gPendingProposal.proposalId.c_str());
+            sendSwitchNack(proposalId, "unknown_proposal", gCurrentEpoch);
+            return;
+          }
+          if (gSwitchState != SwitchState::ACK_SENT && gSwitchState != SwitchState::COMMITTED_PENDING) {
+            Serial.println("[COMMIT_REJECT] wrong state");
+            return;
+          }
+          if (commitNonce == gLastCommitNonce) {
+            Serial.println("[COMMIT_RECEIVED] duplicate nonce — resending switch_done (idempotent)");
+            sendSwitchDone(proposalId, commitNonce, gPendingProposal.epoch);
+            return;
+          }
+          if (commitNonce < gLastCommitNonce) {
+            Serial.println("[COMMIT_REJECT] nonce rollback rejected");
+            return;
+          }
+          gPendingProposal.commitNonce = commitNonce;
+          gSwitchState = SwitchState::COMMITTED_PENDING;
+          Serial.printf("[COMMIT_RECEIVED] proposalId=%s commitNonce=%llu epoch=%u\n", 
+                        proposalId.c_str(), (unsigned long long)commitNonce, commitEpoch);
+        }
+        else if (msgType == "recipe_switch_intent") {
+          Serial.println("[SWITCH] recipe_switch_intent deprecated — use switch_propose");
+          sendSwitchNack(doc["id"] | "", "use_switch_propose", gCurrentEpoch);
+        }
+
+        else if (msgType == "ztm_deactivate_request" || 
+                 (msgType == "ztm_status_update" && doc.containsKey("active") && !(doc["active"] | true))) {
+          // Handle ZTM deactivation from either:
+          // 1. Direct request (ztm_deactivate_request)
+          // 2. Server broadcast (ztm_status_update with active=false)
           Serial.println("[WebSocket] ========================================");
-          Serial.println("[WebSocket] ZTM DEACTIVATION REQUEST RECEIVED");
+          Serial.printf("[WebSocket] ZTM DEACTIVATION RECEIVED (type: %s)\n", msgType.c_str());
           Serial.println("[WebSocket] ========================================");
           
           // CRITICAL: Revert to Normal Mode - ZTM encryption will stop
@@ -539,12 +793,21 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
           
           sendWebSocketUpdate("ztm_deactivated", "Zero Trust Mode deactivated - Normal Mode active");
         }
-        else if (msgType == "adaptive_switch_request") {
+        else if (msgType == "adaptive_switch_request" || msgType == "adaptive_switch_acknowledged") {
           // Handle adaptive mode/recipe switch request from dashboard
-          String mode = doc["mode"] | "normal";
+          // Also handle acknowledgment broadcasts from server (which contains the recipe)
+          String mode = doc["mode"] | "ztm";  // Default to ztm for switch requests
           String recipe = doc["recipe"] | "full_stack";
           
-          Serial.printf("[WebSocket] Adaptive switch requested: mode=%s, recipe=%s\n", mode.c_str(), recipe.c_str());
+          // DEBUG: Log all critical state information
+          Serial.println("[WebSocket] ========================================");
+          Serial.printf("[WebSocket] Received message type: %s\n", msgType.c_str());
+          Serial.printf("[WebSocket] Mode from message: '%s'\n", mode.c_str());
+          Serial.printf("[WebSocket] Recipe from message: '%s'\n", recipe.c_str());
+          Serial.printf("[WebSocket] Current gZTMEnabled: %s\n", gZTMEnabled ? "TRUE" : "FALSE");
+          Serial.printf("[WebSocket] Current gCurrentMode: %s\n", (gCurrentMode == OperationalMode::ZTM) ? "ZTM" : "NORMAL");
+          Serial.printf("[WebSocket] Current gCurrentRecipe: %s\n", recipeToString(gCurrentRecipe).c_str());
+          Serial.println("[WebSocket] ========================================");
           
           // Parse mode
           OperationalMode newMode = (mode == "ztm") ? OperationalMode::ZTM : OperationalMode::NORMAL;
@@ -559,10 +822,15 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
           else if (recipe == "chaos_only" || recipeUpper == "CHAOS_ONLY") newRecipe = ZTMRecipe::CHAOS_ONLY;
           else if (recipe == "stream_focus" || recipeUpper == "STREAM_FOCUS") newRecipe = ZTMRecipe::STREAM_FOCUS;
           
-          // Only allow recipe switching if in ZTM mode
+          Serial.printf("[WebSocket] Parsed newMode: %s, newRecipe: %s\n", 
+                       (newMode == OperationalMode::ZTM) ? "ZTM" : "NORMAL",
+                       recipeToString(newRecipe).c_str());
+          
+          // Two-Phase Commit: do NOT switch here; wait for switch_propose from server, then ack/commit/done
           if (newMode == OperationalMode::ZTM && gZTMEnabled) {
-            switchToRecipe(newRecipe, true); // Force switch for manual override
+            Serial.printf("[WebSocket] Waiting for switch_propose from server for recipe %s\n", recipe.c_str());
           } else if (newMode == OperationalMode::ZTM) {
+            Serial.println("[WebSocket] CONDITION FAILED: ZTM mode requested but gZTMEnabled=false");
             Serial.println("[WebSocket] Cannot switch to ZTM - not activated");
             
             DynamicJsonDocument ackDoc(256);
@@ -602,13 +870,63 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
           sendWebSocketUpdate("mode_changed", 
                             String("Mode: " + mode + ", Recipe: " + recipe).c_str());
         }
+        else if (msgType == "recipe_update") {
+          // Handle server-initiated recipe change (from adaptive loop or heuristics)
+          String recipe = doc["recipe"] | "chaos_only";
+          bool automatic = doc["automatic"] | false;
+          String reason = doc["reason"] | "Server-initiated switch";
+          
+          Serial.println("[WebSocket] ========================================");
+          Serial.printf("[WebSocket] RECIPE UPDATE RECEIVED (automatic: %s)\n", automatic ? "YES" : "NO");
+          Serial.printf("[WebSocket] New Recipe: %s\n", recipe.c_str());
+          Serial.printf("[WebSocket] Reason: %s\n", reason.c_str());
+          Serial.println("[WebSocket] ========================================");
+          
+          if (gZTMEnabled && gCurrentMode == OperationalMode::ZTM) {
+            ZTMRecipe newRecipe = ZTMRecipe::CHAOS_ONLY;
+            String recipeUpper = recipe;
+            recipeUpper.toUpperCase();
+            if (recipeUpper == "FULL_STACK") newRecipe = ZTMRecipe::FULL_STACK;
+            else if (recipeUpper == "CHACHA_HEAVY") newRecipe = ZTMRecipe::CHACHA_HEAVY;
+            else if (recipeUpper == "SALSA_LIGHT") newRecipe = ZTMRecipe::SALSA_LIGHT;
+            else if (recipeUpper == "CHAOS_ONLY") newRecipe = ZTMRecipe::CHAOS_ONLY;
+            else if (recipeUpper == "STREAM_FOCUS") newRecipe = ZTMRecipe::STREAM_FOCUS;
+            
+            // Server-initiated switches don't activate manual override
+            ZTMRecipe oldRecipe = gCurrentRecipe;
+            gCurrentRecipe = newRecipe;
+            gLastRecipeSwitchTime = GET_TIME_MS();
+            saveZTMSettings();
+            
+            Serial.printf("[WebSocket] Recipe switched: %s -> %s\n", 
+                         recipeToString(oldRecipe).c_str(),
+                         recipeToString(newRecipe).c_str());
+            
+            // Acknowledge to server
+            DynamicJsonDocument ackDoc(256);
+            ackDoc["type"] = "recipe_update_acknowledged";
+            ackDoc["recipe"] = recipe;
+            ackDoc["success"] = true;
+            ackDoc["deviceId"] = String((uint32_t)ESP.getEfuseMac(), HEX);
+            ackDoc["timestamp"] = millis();
+            
+            String ackStr;
+            serializeJson(ackDoc, ackStr);
+            webSocket.sendTXT(ackStr);
+            
+            sendWebSocketUpdate("recipe_switched", 
+                              String("Recipe: " + recipe + ", Reason: " + reason).c_str());
+          } else {
+            Serial.println("[WebSocket] Recipe update ignored - ZTM not active");
+          }
+        }
         else if (msgType == "get_ztm_status") {
           // Send current ZTM status
           DynamicJsonDocument statusDoc(512);
           statusDoc["type"] = "ztm_status";
           statusDoc["ztmEnabled"] = gZTMEnabled;
           statusDoc["currentMode"] = (gCurrentMode == OperationalMode::ZTM) ? "ztm" : "normal";
-          statusDoc["currentRecipe"] = recipeToString(gCurrentRecipe).c_str();
+          statusDoc["currentRecipe"] = recipeToString(gCurrentRecipe);
           statusDoc["hmacFailures"] = gHeuristics.hmacFailures;
           statusDoc["decryptFailures"] = gHeuristics.decryptFailures;
           statusDoc["replayAttempts"] = gHeuristics.replayAttempts;
@@ -642,11 +960,252 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
 }
 
 void initWebSocket() {
-  // Initialize WebSocket connection
   webSocket.begin(WS_SERVER, WS_PORT, WS_PATH);
   webSocket.onEvent(webSocketEvent);
   webSocket.setReconnectInterval(5000);
   Serial.printf("[WebSocket] Initialized - Server: %s:%d%s\n", WS_SERVER, WS_PORT, WS_PATH);
+}
+
+// Canonical JSON for control messages - builds canonical payload string from JsonObject
+// Keys are sorted alphabetically, no extra whitespace
+static String canonicalizePayload(JsonObject payload) {
+    // Extract all keys and sort them
+    std::vector<String> keys;
+    for (JsonPair kv : payload) {
+        keys.push_back(String(kv.key().c_str()));
+    }
+    std::sort(keys.begin(), keys.end(), [](const String& a, const String& b) {
+        return strcmp(a.c_str(), b.c_str()) < 0;
+    });
+    
+    // Build canonical JSON string
+    String s = "{";
+    for (size_t i = 0; i < keys.size(); ++i) {
+        const char* k = keys[i].c_str();
+        if (i > 0) s += ",";
+        s += "\"";
+        s += k;
+        s += "\":";
+        
+        JsonVariant val = payload[k];
+        if (val.is<const char*>() || val.is<String>()) {
+            s += "\"";
+            s += val.as<String>();
+            s += "\"";
+        } else if (val.is<bool>()) {
+            s += val.as<bool>() ? "true" : "false";
+        } else if (val.is<unsigned long long>()) {
+            char buf[24];
+            snprintf(buf, sizeof(buf), "%llu", val.as<unsigned long long>());
+            s += buf;
+        } else if (val.is<long long>()) {
+            char buf[24];
+            snprintf(buf, sizeof(buf), "%lld", val.as<long long>());
+            s += buf;
+        } else if (val.is<unsigned long>()) {
+            s += String(val.as<unsigned long>());
+        } else if (val.is<long>()) {
+            s += String(val.as<long>());
+        } else if (val.is<int>()) {
+            s += String(val.as<int>());
+        } else if (val.is<unsigned int>()) {
+            s += String(val.as<unsigned int>());
+        } else if (val.is<double>()) {
+            // For floats, use integer if possible
+            double d = val.as<double>();
+            if (d == (long long)d) {
+                s += String((long long)d);
+            } else {
+                s += String(d, 6);
+            }
+        } else {
+            // Fallback for other types
+            String tmp;
+            serializeJson(val, tmp);
+            s += tmp;
+        }
+    }
+    s += "}";
+    return s;
+}
+
+// ISO8601 UTC timestamp for control messages
+static String nowIso8601Utc() {
+    // ESP32 doesn't have RTC by default, use relative time
+    // In production, you'd use NTP-synced time
+    unsigned long ms = millis();
+    unsigned long sec = ms / 1000;
+    unsigned long min = sec / 60;
+    unsigned long hr = min / 60;
+    char buf[32];
+    // Use a placeholder date with relative time for now
+    snprintf(buf, sizeof(buf), "2026-02-03T%02lu:%02lu:%02luZ", 
+             hr % 24, min % 60, sec % 60);
+    return String(buf);
+}
+
+static String computeHmacHex(const uint8_t* key, size_t keyLen, const String& canonicalStr) {
+    uint8_t tag[32];
+    if (!hmac_sha256_full(key, keyLen, (const uint8_t*)canonicalStr.c_str(), canonicalStr.length(), tag))
+        return "";
+    String out;
+    out.reserve(64);
+    for (int i = 0; i < 32; i++) {
+        char b[3];
+        snprintf(b, sizeof(b), "%02x", (int)tag[i]);
+        out += b;
+    }
+    return out;
+}
+
+static bool verifyPayloadHmac(JsonObject payload, const String& expectedSig) {
+    String canonical = canonicalizePayload(payload);
+    String computed = computeHmacHex(gMasterKey, 32, canonical);
+    Serial.printf("[ZTM] HMAC verify: canonical=%s\n", canonical.c_str());
+    Serial.printf("[ZTM] HMAC verify: computed=%s expected=%s\n", computed.c_str(), expectedSig.c_str());
+    if (computed.length() != expectedSig.length()) return false;
+    return computed.equalsIgnoreCase(expectedSig);
+}
+
+// Send switch_ack with payload/signature format
+static void sendSwitchAck(const String& proposalId, uint32_t epoch, uint32_t lastSeenNonce) {
+    if (!wsConnected) {
+        Serial.println("[SWITCH] sendSwitchAck failed: WS not connected");
+        return;
+    }
+    String deviceId = String((uint32_t)ESP.getEfuseMac(), HEX);
+    
+    // Build payload - keys in alphabetical order: deviceId, epoch, lastSeenNonce, proposalId, ready
+    DynamicJsonDocument doc(512);
+    doc["type"] = "switch_ack";
+    JsonObject payload = doc.createNestedObject("payload");
+    payload["deviceId"] = deviceId;
+    payload["epoch"] = epoch;
+    payload["lastSeenNonce"] = lastSeenNonce;
+    payload["proposalId"] = proposalId;
+    payload["ready"] = true;
+    
+    String canonical = canonicalizePayload(payload);
+    String signature = computeHmacHex(gMasterKey, 32, canonical);
+    if (signature.length() == 0) {
+        Serial.println("[SWITCH] sendSwitchAck failed: HMAC computation failed");
+        return;
+    }
+    doc["signature"] = signature;
+    
+    String out;
+    serializeJson(doc, out);
+    webSocket.sendTXT(out);
+    Serial.printf("[ACK_SENT] proposalId=%s epoch=%u lastSeenNonce=%u\n", 
+                  proposalId.c_str(), epoch, lastSeenNonce);
+    Serial.printf("[ACK_SENT] payload=%s signature=%s\n", canonical.c_str(), signature.c_str());
+}
+
+// Send switch_nack with payload/signature format
+static void sendSwitchNack(const String& proposalId, const String& reason, uint32_t currentEpoch) {
+    if (!wsConnected) {
+        Serial.println("[SWITCH] sendSwitchNack failed: WS not connected");
+        return;
+    }
+    String deviceId = String((uint32_t)ESP.getEfuseMac(), HEX);
+    
+    // Build payload - keys in alphabetical order: currentEpoch, deviceId, proposalId, reason
+    DynamicJsonDocument doc(512);
+    doc["type"] = "switch_nack";
+    JsonObject payload = doc.createNestedObject("payload");
+    payload["currentEpoch"] = currentEpoch;
+    payload["deviceId"] = deviceId;
+    payload["proposalId"] = proposalId;
+    payload["reason"] = reason;
+    
+    String canonical = canonicalizePayload(payload);
+    String signature = computeHmacHex(gMasterKey, 32, canonical);
+    if (signature.length() == 0) {
+        Serial.println("[SWITCH] sendSwitchNack HMAC failed, sending without signature");
+    } else {
+        doc["signature"] = signature;
+    }
+    
+    String out;
+    serializeJson(doc, out);
+    webSocket.sendTXT(out);
+    Serial.printf("[NACK_SENT] proposalId=%s reason=%s currentEpoch=%u\n", 
+                  proposalId.c_str(), reason.c_str(), currentEpoch);
+}
+
+// Send switch_done with payload/signature format
+static void sendSwitchDone(const String& proposalId, uint64_t commitNonce, uint32_t epoch) {
+    if (!wsConnected) {
+        Serial.println("[SWITCH] sendSwitchDone failed: WS not connected");
+        return;
+    }
+    String deviceId = String((uint32_t)ESP.getEfuseMac(), HEX);
+    String switchedAt = nowIso8601Utc();
+    
+    // Build payload - keys in alphabetical order: commitNonce, deviceId, epoch, proposalId, switchedAt
+    DynamicJsonDocument doc(512);
+    doc["type"] = "switch_done";
+    JsonObject payload = doc.createNestedObject("payload");
+    payload["commitNonce"] = commitNonce;
+    payload["deviceId"] = deviceId;
+    payload["epoch"] = epoch;
+    payload["proposalId"] = proposalId;
+    payload["switchedAt"] = switchedAt;
+    
+    String canonical = canonicalizePayload(payload);
+    String signature = computeHmacHex(gMasterKey, 32, canonical);
+    if (signature.length() == 0) {
+        Serial.println("[SWITCH] sendSwitchDone failed: HMAC computation failed");
+        return;
+    }
+    doc["signature"] = signature;
+    
+    String out;
+    serializeJson(doc, out);
+    webSocket.sendTXT(out);
+    Serial.printf("[DONE_SENT] proposalId=%s commitNonce=%llu epoch=%u\n", 
+                  proposalId.c_str(), (unsigned long long)commitNonce, epoch);
+    Serial.printf("[SWITCH_DONE] Recipe switch completed at nonce=%llu\n", (unsigned long long)commitNonce);
+}
+
+static void applyRecipe(const char* recipeName) {
+  String r(recipeName);
+  r.toUpperCase();
+  ZTMRecipe newRecipe = ZTMRecipe::CHAOS_ONLY;
+  if (r == "FULL_STACK") newRecipe = ZTMRecipe::FULL_STACK;
+  else if (r == "CHACHA_HEAVY") newRecipe = ZTMRecipe::CHACHA_HEAVY;
+  else if (r == "SALSA_LIGHT") newRecipe = ZTMRecipe::SALSA_LIGHT;
+  else if (r == "CHAOS_ONLY") newRecipe = ZTMRecipe::CHAOS_ONLY;
+  else if (r == "STREAM_FOCUS") newRecipe = ZTMRecipe::STREAM_FOCUS;
+  gCurrentRecipe = newRecipe;
+  Serial.println("[SWITCH] applyRecipe: " + String(recipeName));
+  saveZTMSettings();
+}
+
+static void applyRecipeIfCommitBoundary() {
+  if (gSwitchState == SwitchState::ACK_SENT && gPendingProposal.active) {
+    if ((unsigned long)(millis() - gPendingProposal.commitWaitStartMs) > (unsigned long)COMMIT_TIMEOUT_MS) {
+      Serial.println("[SWITCH] COMMIT_TIMEOUT — aborting pending proposalId=" + gPendingProposal.proposalId);
+      gPendingProposal.active = false;
+      gSwitchState = SwitchState::NORMAL;
+      return;
+    }
+  }
+  if (gSwitchState != SwitchState::COMMITTED_PENDING || !gPendingProposal.active) return;
+  uint64_t nextTxNonce = ((uint64_t)gCurrentEpoch << 32) | (gPacketCounter + 1);
+  if (nextTxNonce < gPendingProposal.commitNonce) return;
+  Serial.println("[SWITCH] commit boundary reached — applying recipe proposalId=" + gPendingProposal.proposalId);
+  applyRecipe(recipeToString(gPendingProposal.targetRecipe).c_str());
+  gLastCommitNonce = gPendingProposal.commitNonce;
+  gCurrentEpoch = (uint32_t)(gPendingProposal.commitNonce >> 32);
+  gPacketCounter = (uint32_t)(gPendingProposal.commitNonce & 0xFFFFFFFF) - 1;
+  gDeviceNonceTracker.lastNonce = (uint32_t)(gPendingProposal.commitNonce & 0xFFFFFFFF) - 1;
+  String pid = gPendingProposal.proposalId;
+  uint64_t cn = gPendingProposal.commitNonce;
+  uint32_t ep = gPendingProposal.epoch;
+  gPendingProposal.active = false;
+  gSwitchState = SwitchState::NORMAL;
+  sendSwitchDone(pid, cn, ep);
 }
 
 void sendWebSocketUpdate(const char* type, const char* message, bool success) {
@@ -675,6 +1234,8 @@ void sendEncryptionPipelineUpdate(const PipelineLayer* layers, int layerCount, c
   doc["timestamp"] = millis();
   doc["plaintext"] = plaintext;
   doc["healthSendCount"] = healthSendCount;
+  doc["ztmEnabled"] = gZTMEnabled;
+  doc["currentRecipe"] = recipeToString(gCurrentRecipe);
   
   JsonObject pipeline = doc.createNestedObject("pipeline");
   for (int i = 0; i < layerCount; i++) {
@@ -683,6 +1244,8 @@ void sendEncryptionPipelineUpdate(const PipelineLayer* layers, int layerCount, c
     else if (strstr(layers[i].label, "LFSR")) pipeline["afterLFSR"] = layers[i].hex;
     else if (strstr(layers[i].label, "Tinkerbell")) pipeline["afterTinkerbell"] = layers[i].hex;
     else if (strstr(layers[i].label, "Transposition")) pipeline["afterTransposition"] = layers[i].hex;
+    else if (strstr(layers[i].label, "ChaCha20")) pipeline["afterChaCha20"] = layers[i].hex;
+    else if (strstr(layers[i].label, "Salsa20")) pipeline["afterSalsa20"] = layers[i].hex;
     else if (strstr(layers[i].label, "Final")) pipeline["finalPacket"] = layers[i].hex;
   }
   
@@ -715,7 +1278,7 @@ static void hexPrint(const char* label, const uint8_t* data, size_t n) {
   if (n > 32) Serial.print("...");
   Serial.println();
   
-  if (capturingLayers && capturedLayerIndex < 7) {
+  if (capturingLayers && capturedLayerIndex < 9) {
     strncpy(capturedLayers[capturedLayerIndex].label, label, 31);
     capturedLayers[capturedLayerIndex].label[31] = '\0';
     String hexStr = bytes_to_hex(data, n);
@@ -966,6 +1529,8 @@ static bool http_post_enc_data_with_pipeline(const std::vector<uint8_t>& packet,
   doc["plaintext"] = plaintext;
   doc["type"] = "encryption_update";
   doc["timestamp"] = millis();
+  doc["ztmEnabled"] = gZTMEnabled;
+  doc["currentRecipe"] = recipeToString(gCurrentRecipe);
   
   JsonObject pipeline = doc.createNestedObject("pipeline");
   for (int i = 0; i < layerCount; i++) {
@@ -974,6 +1539,8 @@ static bool http_post_enc_data_with_pipeline(const std::vector<uint8_t>& packet,
     else if (strstr(layers[i].label, "LFSR")) pipeline["afterLFSR"] = layers[i].hex;
     else if (strstr(layers[i].label, "Tinkerbell")) pipeline["afterTinkerbell"] = layers[i].hex;
     else if (strstr(layers[i].label, "Transposition")) pipeline["afterTransposition"] = layers[i].hex;
+    else if (strstr(layers[i].label, "ChaCha20")) pipeline["afterChaCha20"] = layers[i].hex;
+    else if (strstr(layers[i].label, "Salsa20")) pipeline["afterSalsa20"] = layers[i].hex;
   }
   
   String jsonStr;
@@ -1251,6 +1818,21 @@ static void writeHeader(uint8_t* hdr8,
   hdr8[7] = cols;
 }
 
+// Wire-format recipe ID (1..5) for 4B; server uses same mapping.
+static uint8_t getWireRecipeId() {
+  if (gCurrentMode != OperationalMode::ZTM) {
+    return RECIPE_ID_CHAOS_ONLY;  // normal mode = LFSR+Tinkerbell+Transpose only
+  }
+  switch (gCurrentRecipe) {
+    case ZTMRecipe::FULL_STACK:    return RECIPE_ID_FULL_STACK;
+    case ZTMRecipe::CHACHA_HEAVY:  return RECIPE_ID_CHACHA_HEAVY;
+    case ZTMRecipe::SALSA_LIGHT:   return RECIPE_ID_SALSA_LIGHT;
+    case ZTMRecipe::CHAOS_ONLY:    return RECIPE_ID_CHAOS_ONLY;
+    case ZTMRecipe::STREAM_FOCUS:  return RECIPE_ID_STREAM_FOCUS;
+    default:                       return RECIPE_ID_CHAOS_ONLY;
+  }
+}
+
 // FIXED: Compatible encryption pipeline that matches server implementation
 void pipelineEncryptPacket(const DerivedKeys& baseKeys,
                            uint32_t nonce, bool includeNonceExt,
@@ -1264,6 +1846,44 @@ void pipelineEncryptPacket(const DerivedKeys& baseKeys,
     Serial.println("deriveMessageKeys failed!");
     packet.clear();
     return;
+  }
+  
+  // Log current mode and recipe at the START of every encryption
+  if (verbose) {
+    Serial.println("[ESP32] ========================================");
+    Serial.printf("[ESP32] ENCRYPTION PIPELINE START\n");
+    Serial.printf("[ESP32] Mode: %s | ZTM Enabled: %s | Recipe: %s\n",
+                  (gCurrentMode == OperationalMode::ZTM) ? "ZTM" : "NORMAL",
+                  gZTMEnabled ? "TRUE" : "FALSE",
+                  (gZTMEnabled && gCurrentMode == OperationalMode::ZTM)
+                    ? recipeToString(gCurrentRecipe).c_str()
+                    : "CHAOS_ONLY (Normal Baseline)");
+    
+    // Log which algorithms will be used
+    if (gCurrentMode == OperationalMode::ZTM && gZTMEnabled) {
+      Serial.println("[ESP32] Active Algorithms for this packet:");
+      bool useLFSR = (gCurrentRecipe != ZTMRecipe::STREAM_FOCUS);
+      bool useTink = (gCurrentRecipe == ZTMRecipe::FULL_STACK || 
+                      gCurrentRecipe == ZTMRecipe::CHACHA_HEAVY || 
+                      gCurrentRecipe == ZTMRecipe::CHAOS_ONLY);
+      bool useTrans = (gCurrentRecipe == ZTMRecipe::FULL_STACK || 
+                       gCurrentRecipe == ZTMRecipe::CHAOS_ONLY);
+      bool useChaCha = (gCurrentRecipe == ZTMRecipe::FULL_STACK || 
+                        gCurrentRecipe == ZTMRecipe::CHACHA_HEAVY || 
+                        gCurrentRecipe == ZTMRecipe::STREAM_FOCUS);
+      bool useSalsa = (gCurrentRecipe == ZTMRecipe::FULL_STACK || 
+                       gCurrentRecipe == ZTMRecipe::SALSA_LIGHT || 
+                       gCurrentRecipe == ZTMRecipe::STREAM_FOCUS);
+      
+      Serial.printf("[ESP32]   %s LFSR\n", useLFSR ? "+" : "-");
+      Serial.printf("[ESP32]   %s Tinkerbell\n", useTink ? "+" : "-");
+      Serial.printf("[ESP32]   %s Transposition\n", useTrans ? "+" : "-");
+      Serial.printf("[ESP32]   %s ChaCha20\n", useChaCha ? "+" : "-");
+      Serial.printf("[ESP32]   %s Salsa20\n", useSalsa ? "+" : "-");
+    } else {
+      Serial.println("[ESP32] Active Algorithms: LFSR + Tinkerbell + Transposition (Normal Mode)");
+    }
+    Serial.println("[ESP32] ========================================");
   }
   
   // Debug message keys
@@ -1327,15 +1947,19 @@ void pipelineEncryptPacket(const DerivedKeys& baseKeys,
     
     if (verbose) {
       hexPrint("3_After_LFSR", buf.data(), buf.size());
-      
-      // Calculate and log the keystream that was applied
       Serial.printf("[ESP32][LFSR] Keystream (first 16 bytes): ");
       for (int i = 0; i < 16 && i < (int)buf.size(); ++i) {
-        uint8_t ks = bufBeforeLFSR[i] ^ buf[i];
-        Serial.printf("%02X", ks);
+        Serial.printf("%02X", bufBeforeLFSR[i] ^ buf[i]);
+      }
+      Serial.println();
+      Serial.printf("[ESP32][4D] LFSR keystream (first 32 bytes): ");
+      for (int i = 0; i < 32 && i < (int)buf.size(); ++i) {
+        Serial.printf("%02X", bufBeforeLFSR[i] ^ buf[i]);
       }
       Serial.println();
     }
+  } else if (verbose && gCurrentMode == OperationalMode::ZTM) {
+    Serial.println("[ESP32][LFSR] SKIPPED (recipe: " + recipeToString(gCurrentRecipe) + ")");
   }
 
   // Step 4: Tinkerbell encryption - FIXED: Consistent XOR stream
@@ -1364,15 +1988,19 @@ void pipelineEncryptPacket(const DerivedKeys& baseKeys,
     
     if (verbose) {
       hexPrint("4_After_Tinkerbell", buf.data(), buf.size());
-      
-      // Calculate and log the keystream that was applied
       Serial.printf("[ESP32][TINKERBELL] Applied keystream (first 16 bytes): ");
       for (int i = 0; i < 16 && i < (int)buf.size(); ++i) {
-        uint8_t ks = bufBeforeTink[i] ^ buf[i];
-        Serial.printf("%02X", ks);
+        Serial.printf("%02X", bufBeforeTink[i] ^ buf[i]);
+      }
+      Serial.println();
+      Serial.printf("[ESP32][4D] Tinkerbell keystream (first 32 bytes): ");
+      for (int i = 0; i < 32 && i < (int)buf.size(); ++i) {
+        Serial.printf("%02X", bufBeforeTink[i] ^ buf[i]);
       }
       Serial.println();
     }
+  } else if (verbose && gCurrentMode == OperationalMode::ZTM) {
+    Serial.println("[ESP32][TINKERBELL] SKIPPED (recipe: " + recipeToString(gCurrentRecipe) + ")");
   }
 
   // Step 5: Transposition - FIXED: Use Forward mode for encryption
@@ -1389,6 +2017,8 @@ void pipelineEncryptPacket(const DerivedKeys& baseKeys,
     memcpy(trKey8, mk.transpositionKey, 8);
     applyTransposition(buf.data(), grid, trKey8, PermuteMode::Forward);
     if (verbose) hexPrint("5_After_Transposition", buf.data(), buf.size());
+  } else if (verbose && gCurrentMode == OperationalMode::ZTM) {
+    Serial.println("[ESP32][TRANSPOSITION] SKIPPED (recipe: " + recipeToString(gCurrentRecipe) + ")");
   }
   
   // ZTM MODE: Additional steps 6 & 7 (ChaCha20 and Salsa20)
@@ -1409,12 +2039,34 @@ void pipelineEncryptPacket(const DerivedKeys& baseKeys,
       memset(chachaNonce + 4, 0, 8);
       // Use hmacKey as ChaCha20 key (32 bytes)
       chacha.init(baseKeys.hmacKey, 32, chachaNonce, 12);
+      
+      // DEBUG: Log ChaCha20 initialization parameters
+      if (verbose) {
+        Serial.printf("[ESP32][CHACHA20] Initializing - Nonce: 0x%08X\n", nonce);
+        Serial.printf("[ESP32][CHACHA20] Key (first 8 bytes): ");
+        for (int i = 0; i < 8; ++i) {
+          Serial.printf("%02X", baseKeys.hmacKey[i]);
+        }
+        Serial.println();
+        Serial.printf("[ESP32][CHACHA20] Full Nonce (12 bytes): ");
+        for (int i = 0; i < 12; ++i) {
+          Serial.printf("%02X", chachaNonce[i]);
+        }
+        Serial.println();
+        Serial.printf("[ESP32][CHACHA20] Input (first 16 bytes): ");
+        for (size_t i = 0; i < 16 && i < buf.size(); ++i) {
+          Serial.printf("%02X", buf[i]);
+        }
+        Serial.println();
+      }
+      
       chacha.encrypt(buf.data(), buf.data(), buf.size());
-      if (verbose) hexPrint("6_After_ChaCha20", buf.data(), buf.size());
+      if (verbose) {
+        hexPrint("6_After_ChaCha20", buf.data(), buf.size());
+        Serial.printf("[ESP32][CHACHA20] Encryption complete - Output size: %u bytes\n", (unsigned)buf.size());
+      }
     }
     
-    // Step 7: Salsa20 (if recipe includes it)
-    // FULL_STACK, SALSA_LIGHT, STREAM_FOCUS include Salsa20
     if (gCurrentRecipe == ZTMRecipe::FULL_STACK || 
         gCurrentRecipe == ZTMRecipe::SALSA_LIGHT || 
         gCurrentRecipe == ZTMRecipe::STREAM_FOCUS) {
@@ -1425,8 +2077,32 @@ void pipelineEncryptPacket(const DerivedKeys& baseKeys,
       memset(salsaNonce + 4, 0, 4);
       // Use hmacKey as Salsa20 key (32 bytes)
       salsa.init(baseKeys.hmacKey, 32, salsaNonce, 8);
+      
+      // DEBUG: Log Salsa20 initialization parameters
+      if (verbose) {
+        Serial.printf("[ESP32][SALSA20] Initializing - Nonce: 0x%08X\n", nonce);
+        Serial.printf("[ESP32][SALSA20] Key (first 8 bytes): ");
+        for (int i = 0; i < 8; ++i) {
+          Serial.printf("%02X", baseKeys.hmacKey[i]);
+        }
+        Serial.println();
+        Serial.printf("[ESP32][SALSA20] Full Nonce (8 bytes): ");
+        for (int i = 0; i < 8; ++i) {
+          Serial.printf("%02X", salsaNonce[i]);
+        }
+        Serial.println();
+        Serial.printf("[ESP32][SALSA20] Input (first 16 bytes): ");
+        for (size_t i = 0; i < 16 && i < buf.size(); ++i) {
+          Serial.printf("%02X", buf[i]);
+        }
+        Serial.println();
+      }
+      
       salsa.encrypt(buf.data(), buf.data(), buf.size());
-      if (verbose) hexPrint("7_After_Salsa20", buf.data(), buf.size());
+      if (verbose) {
+        hexPrint("7_After_Salsa20", buf.data(), buf.size());
+        Serial.printf("[ESP32][SALSA20] Encryption complete - Output size: %u bytes\n", (unsigned)buf.size());
+      }
     }
     
     // Recipe-specific notes:
@@ -1440,29 +2116,47 @@ void pipelineEncryptPacket(const DerivedKeys& baseKeys,
     // This is handled by checking recipe before those steps
   }
 
-  // Build packet with header and HMAC
-  const size_t headerLen = 8;
-  const size_t nonceLen = includeNonceExt ? 4 : 0;
+  // Build packet with header and HMAC. 4B: When nonce present use VERSION_RECIPE_ID (0x82),
+  // recipeId at byte 8, nonce at 9-12, so server uses the same pipeline.
+  // CRITICAL: Use 0x82 (recipeId format) ONLY when ZTM is active, not in normal mode!
+  const bool ztmActive = gZTMEnabled && gCurrentMode == OperationalMode::ZTM;
+  const bool withRecipeId = ztmActive;  // Only include recipeId in ZTM mode
+  const size_t headerLen = withRecipeId ? 9 : 8;
+  const size_t nonceLen = (includeNonceExt || ztmActive) ? 4 : 0;
   const size_t tagLen = HMAC_TAG_LEN;
   const size_t macInLen = headerLen + nonceLen + buf.size();
 
   packet.resize(macInLen + tagLen);
   uint8_t* p = packet.data();
 
-  // Write header
-  uint8_t version = includeNonceExt ? VERSION_NONCE_EXT : VERSION_BASE;
+  uint8_t version;
+  if (withRecipeId) {
+    version = VERSION_RECIPE_ID;  // 0x82: recipeId at 8, nonce at 9-12
+  } else if (includeNonceExt) {
+    version = VERSION_NONCE_EXT;
+  } else {
+    version = VERSION_BASE;
+  }
   writeHeader(p, version, salt_len, salt_pos, payload_len,
               (uint8_t)grid.rows, (uint8_t)grid.cols);
 
-  // Write nonce if extended
-  if (includeNonceExt) {
+  if (withRecipeId) {
+    p[8] = getWireRecipeId();
+    p[9]  = (uint8_t)((nonce >> 24) & 0xFF);
+    p[10] = (uint8_t)((nonce >> 16) & 0xFF);
+    p[11] = (uint8_t)((nonce >> 8) & 0xFF);
+    p[12] = (uint8_t)(nonce & 0xFF);
+    if (verbose) {
+      Serial.printf("[ESP32][4B] recipeId=%u (%s) nonce=0x%08X\n",
+                   (unsigned)p[8], recipeToString(gCurrentRecipe).c_str(), (unsigned)nonce);
+    }
+  } else if (includeNonceExt) {
     p[8] = (uint8_t)((nonce >> 24) & 0xFF);
     p[9] = (uint8_t)((nonce >> 16) & 0xFF);
     p[10] = (uint8_t)((nonce >> 8) & 0xFF);
     p[11] = (uint8_t)(nonce & 0xFF);
   }
 
-  // Copy encrypted data
   memcpy(p + headerLen + nonceLen, buf.data(), buf.size());
 
   // ADD HMAC DEBUGGING HERE - BEFORE HMAC COMPUTATION
@@ -1733,14 +2427,6 @@ void handle_communication_state() {
       }
       
       if (millis() - lastHealthSend >= HEALTH_DATA_INTERVAL_MS) {
-        // Generate health data first
-        char healthBuffer[64];
-        generate_realistic_health_data(healthBuffer, sizeof(healthBuffer), millis());
-        Serial.printf("Generated health data: %s\n", healthBuffer);
-        
-        strncpy(currentPlaintext, healthBuffer, 127);
-        currentPlaintext[127] = '\0';
-        
         // Validate we can send
         if (!should_attempt_send()) {
           Serial.println("Cannot send - system not ready");
@@ -1748,7 +2434,7 @@ void handle_communication_state() {
           break;
         }
         
-        // Use retry mechanism instead of direct call
+        // Use retry mechanism - it generates health data internally
         if (send_health_data_with_retry()) {
           retryCount = 0;
           lastHealthSend = millis();
@@ -1847,7 +2533,7 @@ static void recordEvent(const char* eventType) {
     doc["timingAnomalies"] = gHeuristics.timingAnomalies;
     doc["ztmEnabled"] = gZTMEnabled;
     doc["currentMode"] = (gCurrentMode == OperationalMode::ZTM) ? "ztm" : "normal";
-    doc["currentRecipe"] = recipeToString(gCurrentRecipe).c_str();
+    doc["currentRecipe"] = recipeToString(gCurrentRecipe);
     
     String jsonStr;
     serializeJson(doc, jsonStr);
@@ -1861,6 +2547,18 @@ static bool evaluateThreatAndSwitchRecipe() {
   }
   
   uint32_t now = GET_TIME_MS();
+  
+  // Check if manual override is active - prevents auto-switching after manual recipe selection
+  if (gManualOverrideActive) {
+    if (now < gManualOverrideUntil) {
+      // Manual override still active - skip auto-switching
+      return false;
+    } else {
+      // Manual override expired - resume auto-switching
+      gManualOverrideActive = false;
+      Serial.println("[ZTM] Manual override expired - resuming automatic switching");
+    }
+  }
   
   // Cooldown check - prevent rapid switching (from heuristics.json: min_switch_interval_seconds = 5)
   const uint32_t MIN_SWITCH_INTERVAL_MS = 5000;
@@ -1971,8 +2669,8 @@ static bool evaluateThreatAndSwitchRecipe() {
     if (wsConnected) {
       DynamicJsonDocument doc(512);
       doc["type"] = "recipe_switched";
-      doc["oldRecipe"] = recipeToString(gCurrentRecipe).c_str();
-      doc["newRecipe"] = recipeToString(targetRecipe).c_str();
+      doc["oldRecipe"] = recipeToString(gCurrentRecipe);
+      doc["newRecipe"] = recipeToString(targetRecipe);
       doc["reason"] = switchReason.c_str();
       doc["timestamp"] = now;
       
@@ -2001,9 +2699,60 @@ static void switchToRecipe(ZTMRecipe recipe, bool force) {
   gCurrentRecipe = recipe;
   gLastRecipeSwitchTime = GET_TIME_MS();
   
-  Serial.printf("[ZTM] Recipe switched: %s -> %s\n", 
+  // If this is a manual switch (force=true), activate override to prevent auto-switching
+  if (force) {
+    gManualOverrideActive = true;
+    gManualOverrideUntil = GET_TIME_MS() + MANUAL_OVERRIDE_DURATION_MS;
+    Serial.printf("[ZTM] Manual override activated - auto-switching disabled for %u seconds\n", 
+                 MANUAL_OVERRIDE_DURATION_MS / 1000);
+  }
+  
+  Serial.println("[ZTM] ========================================");
+  Serial.printf("[ZTM] ADAPTIVE SWITCHING ACTIVATED\n");
+  Serial.printf("[ZTM] Recipe changed: %s -> %s\n", 
                recipeToString(oldRecipe).c_str(), 
                recipeToString(recipe).c_str());
+  
+  // Log which algorithms are active for this recipe
+  Serial.println("[ZTM] Active Algorithms:");
+  switch (recipe) {
+    case ZTMRecipe::FULL_STACK:
+      Serial.println("[ZTM]   ✓ LFSR");
+      Serial.println("[ZTM]   ✓ Tinkerbell");
+      Serial.println("[ZTM]   ✓ Transposition");
+      Serial.println("[ZTM]   ✓ ChaCha20");
+      Serial.println("[ZTM]   ✓ Salsa20");
+      break;
+    case ZTMRecipe::CHACHA_HEAVY:
+      Serial.println("[ZTM]   ✓ LFSR");
+      Serial.println("[ZTM]   ✓ Tinkerbell");
+      Serial.println("[ZTM]   ✗ Transposition");
+      Serial.println("[ZTM]   ✓ ChaCha20");
+      Serial.println("[ZTM]   ✗ Salsa20");
+      break;
+    case ZTMRecipe::SALSA_LIGHT:
+      Serial.println("[ZTM]   ✓ LFSR");
+      Serial.println("[ZTM]   ✗ Tinkerbell");
+      Serial.println("[ZTM]   ✗ Transposition");
+      Serial.println("[ZTM]   ✗ ChaCha20");
+      Serial.println("[ZTM]   ✓ Salsa20");
+      break;
+    case ZTMRecipe::CHAOS_ONLY:
+      Serial.println("[ZTM]   ✓ LFSR");
+      Serial.println("[ZTM]   ✓ Tinkerbell");
+      Serial.println("[ZTM]   ✓ Transposition");
+      Serial.println("[ZTM]   ✗ ChaCha20");
+      Serial.println("[ZTM]   ✗ Salsa20");
+      break;
+    case ZTMRecipe::STREAM_FOCUS:
+      Serial.println("[ZTM]   ✗ LFSR");
+      Serial.println("[ZTM]   ✗ Tinkerbell");
+      Serial.println("[ZTM]   ✗ Transposition");
+      Serial.println("[ZTM]   ✓ ChaCha20");
+      Serial.println("[ZTM]   ✓ Salsa20");
+      break;
+  }
+  Serial.println("[ZTM] ========================================");
   
   // CRITICAL: Regenerate keys/nonces to prevent decryption errors
   // This ensures synchronization between encryption and decryption
@@ -2016,8 +2765,8 @@ static void switchToRecipe(ZTMRecipe recipe, bool force) {
   if (wsConnected) {
     DynamicJsonDocument doc(512);
     doc["type"] = "recipe_switched";
-    doc["oldRecipe"] = recipeToString(oldRecipe).c_str();
-    doc["newRecipe"] = recipeToString(recipe).c_str();
+    doc["oldRecipe"] = recipeToString(oldRecipe);
+    doc["newRecipe"] = recipeToString(recipe);
     doc["timestamp"] = gLastRecipeSwitchTime;
     doc["reason"] = "threat_detection";
     
@@ -2146,6 +2895,10 @@ void setup() {
   
   // Load ZTM settings from NVS
   loadZTMSettings();
+
+  // 4C: Recipe map version and mapping (must match server)
+  Serial.printf("[RECIPE] Recipe map version: %d\n", RECIPE_MAP_VERSION);
+  Serial.println("[RECIPE] Mapping: 1=FULL_STACK 2=CHACHA_HEAVY 3=SALSA_LIGHT 4=CHAOS_ONLY 5=STREAM_FOCUS");
 }
 
 void loop() {

@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useRef, useEffect } from 'react'
+import React, { useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 
 export interface LogEntry {
@@ -27,10 +27,6 @@ export default function ZTMEventLog({
 }: ZTMEventLogProps) {
     const logEndRef = useRef<HTMLDivElement>(null)
 
-    // Auto-scroll to bottom on new logs
-    useEffect(() => {
-        logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-    }, [logs])
 
     const getLogStyle = (type: LogEntry['type']) => {
         switch (type) {

@@ -6,7 +6,7 @@ import { MotionDiv, MotionInput } from '../../lib/motion'
 
 interface ZTMPasskeyModalProps {
     isOpen: boolean
-    onSuccess: () => void
+    onSuccess: (passkey: string) => void  // Pass verified passkey to parent
     onCancel: () => void
 }
 
@@ -61,7 +61,7 @@ export default function ZTMPasskeyModal({ isOpen, onSuccess, onCancel }: ZTMPass
 
         if (passkey === correctPasskey) {
             setIsVerifying(false)
-            onSuccess()
+            onSuccess(passkey)  // Pass the verified passkey to parent
         } else {
             setIsVerifying(false)
             setError('Invalid passkey. Please try again.')
