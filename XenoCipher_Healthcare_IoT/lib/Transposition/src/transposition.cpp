@@ -424,18 +424,80 @@ void applyTranspositionEnhanced(uint8_t *data, const GridSpec &grid, const uint8
   free(fillCursor);
 }
   
-// Public wrapper: accept 8-byte key and call enhanced implementation.
+// Public wrapper: deterministic row-major transposition with explicit inverse.
 void applyTransposition(uint8_t *data, const GridSpec &grid, const uint8_t key[8], PermuteMode mode) {
+  if (!data || grid.rows == 0 || grid.cols == 0) return;
+
+  size_t total = grid.rows * grid.cols;
+  if (total <= 1) return;
+
+  // Expand 8-byte key into 16 bytes (simple deterministic KDF),
+  // then reuse the existing DeterministicPRNG defined above.
   uint8_t key16[16];
   if (key) {
     memcpy(key16, key, 8);
     for (int i = 0; i < 8; ++i) {
       uint8_t a = key[i];
       uint8_t b = key[(i + 3) & 7];
-      key16[8 + i] = (uint8_t)(((a << 3) | (a >> 5)) ^ ((b << 1) | (b >> 7)) ^ 0xA5u ^ (uint8_t)i);
+      key16[8 + i] = (uint8_t)(((a << 3) | (a >> 5)) ^
+                               ((b << 1) | (b >> 7)) ^
+                               0xA5u ^ (uint8_t)i);
     }
   } else {
     memset(key16, 0, sizeof(key16));
   }
-  applyTranspositionEnhanced(data, grid, key16, mode);
+  //applyTranspositionEnhanced(data, grid, key16, mode);
+  DeterministicPRNG prng(key16);
+
+  // Build base permutation over flat row-major indices [0, total)
+  uint32_t *perm = (uint32_t*)malloc(total * sizeof(uint32_t));
+  if (!perm) return;
+  for (size_t i = 0; i < total; ++i) perm[i] = (uint32_t)i;
+
+  // Fisher–Yates shuffle with PRNG
+  if (total > 1) {
+    for (size_t i = total - 1; i > 0; --i) {
+      uint32_t r = prng.next32();
+      size_t j = (size_t)(r % (uint32_t)(i + 1));
+      uint32_t tmp = perm[i];
+      perm[i] = perm[j];
+      perm[j] = tmp;
+    }
+  }
+
+  // Build inverse permutation: inv[ perm[i] ] = i
+  uint32_t *inv = (uint32_t*)malloc(total * sizeof(uint32_t));
+  if (!inv) {
+    free(perm);
+    return;
+  }
+  for (size_t i = 0; i < total; ++i) {
+    inv[perm[i]] = (uint32_t)i;
+  }
+
+  // Work buffer for permuted data
+  uint8_t *out = (uint8_t*)malloc(total);
+  if (!out) {
+    free(perm);
+    free(inv);
+    return;
+  }
+
+  if (mode == PermuteMode::Forward) {
+    // Cipher = P(plain): out[i] = data[ perm[i] ]
+    for (size_t i = 0; i < total; ++i) {
+      out[i] = data[perm[i]];
+    }
+  } else {
+    // Plain = P^{-1}(cipher): cipher[i] = plain[perm[i]] => plain[j] = cipher[inv[j]]
+    for (size_t j = 0; j < total; ++j) {
+      out[j] = data[inv[j]];
+    }
+  }
+
+  memcpy(data, out, total);
+
+  free(out);
+  free(perm);
+  free(inv);
 }

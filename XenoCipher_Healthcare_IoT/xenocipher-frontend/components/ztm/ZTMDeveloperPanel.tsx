@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react'
 import { useZeroTrust } from '../../context/ZeroTrustContext'
+import { useWebSocket } from '../../context/WebSocketContext'
 import { MotionDiv, MotionButton } from '../../lib/motion'
 
 // Predefined threat scenarios for testing
@@ -93,12 +94,19 @@ const THREAT_SCENARIOS = [
 
 export default function ZTMDeveloperPanel() {
     const { updateHeuristics, addAlert, addEventLog, isZeroTrustMode } = useZeroTrust()
+    const { sendMessage } = useWebSocket()
     const [lastSimulation, setLastSimulation] = useState<string | null>(null)
     const [isExpanded, setIsExpanded] = useState(true)
 
     const handleSimulate = (scenario: typeof THREAT_SCENARIOS[0]) => {
         // Update heuristics
         updateHeuristics(scenario.heuristics)
+
+        // Also push simulated metrics to backend heuristics engine
+        sendMessage({
+            type: 'simulate_heuristics',
+            values: scenario.heuristics
+        })
 
         // Add alert if present
         if (scenario.alert) {
@@ -120,7 +128,7 @@ export default function ZTMDeveloperPanel() {
     }
 
     const handleResetMetrics = () => {
-        updateHeuristics({
+        const baseline = {
             latencyMs: 48.5,
             entropyAfter: 7.8,
             hmacFailures: 0,
@@ -128,6 +136,15 @@ export default function ZTMDeveloperPanel() {
             replayAttempts: 0,
             malformedPackets: 0,
             timingAnomalies: 0
+        }
+
+        // Reset frontend heuristics view
+        updateHeuristics(baseline)
+
+        // Inform backend heuristics engine that simulation has ended
+        sendMessage({
+            type: 'simulate_heuristics',
+            values: baseline
         })
         setLastSimulation(null)
         addEventLog({
@@ -200,7 +217,7 @@ export default function ZTMDeveloperPanel() {
 
                     {/* Warning */}
                     <p className="mt-3 text-[10px] text-gray-600 text-center">
-                        ⚠️ Developer testing only. Simulations do not affect actual encryption.
+                        ⚠️ Developer testing only. Simulations drive heuristics and adaptive switching, not real attacks.
                     </p>
                 </div>
             )}

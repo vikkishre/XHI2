@@ -144,12 +144,14 @@ private:
     static const uint64_t MIN_SWITCH_INTERVAL_MS = 5000;
     std::map<std::string, ProposalState> proposals;
     uint64_t commitCounter;
+    uint64_t lastCommitNonce;
     std::function<void(const nlohmann::json&)> broadcastFn;
 
     ZTMStateManager()
         : isActive(false), currentEpoch(1), activeRecipe("CHAOS_ONLY"), passkey("1234"),
-          activatedAt(0), lastSwitchReason(""), adaptiveLoopRunning(false), commitCounter(0) {
-        heuristicsManager.loadThresholdsFromJSON("../lib/Heuristics_Manager/heuristics.json");
+          activatedAt(0), lastSwitchReason(""), adaptiveLoopRunning(false),
+          lastRecipeSwitchTime(0), commitCounter(0), lastCommitNonce(0) {
+        heuristicsManager.loadThresholdsFromJSON("heuristics.json");
     }
 
 public:
@@ -272,6 +274,14 @@ public:
             {"targetRecipe", targetRecipe}
         };
         std::string canonicalPayload = canonicalize_json(payload);
+        
+        // DIAGNOSTIC: Log master key used for signature
+        std::cout << "[ZTM][SEND_PROPOSE] Master key (first 16 bytes): ";
+        for (size_t i = 0; i < std::min<size_t>(16, gMasterKey.size()); ++i) {
+            printf("%02X", gMasterKey[i]);
+        }
+        std::cout << std::endl;
+        
         std::string signature = computeControlHmacHex(canonicalPayload);
         
         if (signature.empty()) {
@@ -347,6 +357,7 @@ public:
         ps.deviceId = deviceId;
         // commitNonce = lastSeenNonce + 1 (safe boundary)
         ps.commitNonce = ((uint64_t)ps.epoch << 32) | (lastSeenNonce + 1);
+        lastCommitNonce = ps.commitNonce;
         ps.state = ProposalStateEnum::COMMIT_SENT;
         ps.commitTime = currentTimeMs();
         ps.retries = 0;
@@ -436,7 +447,12 @@ public:
         }
         std::cout << "[ZTM][RECV_DONE] SUCCESS: recipe switched to " << recipe 
                   << " epoch=" << epoch << std::endl;
-        if (broadcastFn) broadcastFn(getStatus());
+        if (broadcastFn) {
+            // Explicitly broadcast an authoritative active-recipe update
+            nlohmann::json status = getStatus();
+            status["type"] = "active_recipe_updated";
+            broadcastFn(status);
+        }
         return true;
     }
 
@@ -529,7 +545,9 @@ public:
         HeuristicMetrics metrics = heuristicsManager.getLatestMetrics();
         size_t pendingCount = proposals.size();
         return {
-            {"type", "ztm_status_update"},
+            // Use unified message type so frontend can treat this
+            // as the authoritative ZTM status (including recipe).
+            {"type", "ztm_status"},
             {"active", isActive},
             {"epoch", currentEpoch},
             {"recipe", activeRecipe},
@@ -547,7 +565,9 @@ public:
                 {"timingAnomalies", metrics.timingAnomalies}
             }},
             {"threatLevel", static_cast<int>(heuristicsManager.getCurrentThreatLevel())},
-            {"serverTime", currentTimeMs()}
+            {"serverTime", currentTimeMs()},
+            {"lastCommitNonce", lastCommitNonce},
+            {"lastSeenNonce", g_lastSeenNonce}
         };
     }
 
@@ -568,20 +588,33 @@ public:
             }},
             {"threatLevel", static_cast<int>(heuristicsManager.getCurrentThreatLevel())},
             {"currentRecipe", activeRecipe},
+            {"epoch", currentEpoch},
+            {"lastCommitNonce", lastCommitNonce},
+            {"lastSeenNonce", g_lastSeenNonce},
             {"serverTime", currentTimeMs()}
         };
     }
 
     void simulateHeuristics(const nlohmann::json& values) {
-        HeuristicMetrics metrics;
+        HeuristicMetrics metrics = heuristicsManager.getLatestMetrics();
+
+        // Accept both backend-oriented names and frontend/UI names
+        // so dev-panel simulations always drive the same engine.
         if (values.contains("entropy")) metrics.entropy = values["entropy"].get<double>();
+        if (values.contains("entropyAfter")) metrics.entropy = values["entropyAfter"].get<double>();
+
         if (values.contains("latency")) metrics.latency = values["latency"].get<double>();
+        if (values.contains("latencyMs")) metrics.latency = values["latencyMs"].get<double>();
+
         if (values.contains("cpuUsage")) metrics.cpuUsage = values["cpuUsage"].get<double>();
+        if (values.contains("cpuPercent")) metrics.cpuUsage = values["cpuPercent"].get<double>();
+
         if (values.contains("hmacFailures")) metrics.hmacFailures = values["hmacFailures"].get<uint32_t>();
         if (values.contains("decryptFailures")) metrics.decryptFailures = values["decryptFailures"].get<uint32_t>();
         if (values.contains("replayAttempts")) metrics.replayAttempts = values["replayAttempts"].get<uint32_t>();
         if (values.contains("malformedPackets")) metrics.malformedPackets = values["malformedPackets"].get<uint32_t>();
         if (values.contains("timingAnomalies")) metrics.timingAnomalies = values["timingAnomalies"].get<uint32_t>();
+
         heuristicsManager.updateMetrics(metrics);
     }
 
@@ -594,17 +627,29 @@ public:
         std::string recipe;
         switch (newMode) {
             case OperationalMode::STANDARD: recipe = "CHAOS_ONLY"; break;
-            case OperationalMode::HARDENED: recipe = "CHACHA_HEAVY"; break;
-            case OperationalMode::CHACHA20_AEAD: recipe = "FULL_STACK"; break;
+            case OperationalMode::HARDENED: recipe = "FULL_STACK"; break;
+            case OperationalMode::CHACHA20_AEAD: recipe = "CHACHA_HEAVY"; break;
             case OperationalMode::SALSA20_AEAD: recipe = "SALSA_LIGHT"; break;
             default: recipe = "CHAOS_ONLY";
         }
-        if (recipe != getActiveRecipe()) {
-            std::string reason = heuristicsManager.getModeDescription(newMode);
-            if (getIsActive() && !proposeSwitchToDevice(recipe, reason, broadcastFn ? broadcastFn : [](const nlohmann::json&){}).empty())
-                return recipe;
+        std::string current = getActiveRecipe();
+        if (recipe == current) {
+            std::cout << "[ZTM][HEURISTICS] No switch: targetRecipe == activeRecipe (" << recipe << ")" << std::endl;
+            return "";
         }
-        return "";
+        std::string reason = heuristicsManager.getModeDescription(newMode);
+        if (!getIsActive()) {
+            std::cout << "[ZTM][HEURISTICS] No switch: ZTM not active (wanted " << recipe << " from mode " << (int)newMode << ")" << std::endl;
+            return "";
+        }
+        std::string pid = proposeSwitchToDevice(recipe, reason, broadcastFn ? broadcastFn : [](const nlohmann::json&){});
+        if (pid.empty()) {
+            std::cout << "[ZTM][HEURISTICS] No switch: proposeSwitchToDevice rejected (cooldown or invalid) for recipe " << recipe << std::endl;
+            return "";
+        }
+        std::cout << "[ZTM][HEURISTICS] Switch proposed by heuristics: " << current << " → " << recipe
+                  << " reason=" << reason << " proposalId=" << pid << std::endl;
+        return recipe;
     }
 
     std::pair<std::string, std::string> getRecommendedSwitch() {
@@ -613,8 +658,8 @@ public:
         std::string recipe;
         switch (newMode) {
             case OperationalMode::STANDARD: recipe = "CHAOS_ONLY"; break;
-            case OperationalMode::HARDENED: recipe = "CHACHA_HEAVY"; break;
-            case OperationalMode::CHACHA20_AEAD: recipe = "FULL_STACK"; break;
+            case OperationalMode::HARDENED: recipe = "FULL_STACK"; break;
+            case OperationalMode::CHACHA20_AEAD: recipe = "CHACHA_HEAVY"; break;
             case OperationalMode::SALSA20_AEAD: recipe = "SALSA_LIGHT"; break;
             default: recipe = "CHAOS_ONLY";
         }

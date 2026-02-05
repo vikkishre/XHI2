@@ -1,0 +1,317 @@
+Introduction:
+-------------
+The use of modern IoT devices in healthcare telemetry and related embeded systems has increased rapidly. Thus forcing a need for some cryptographic solutions that provide security and are efficient on resource contrained devices. General purpose block ciphers such as AES provide strong ciphers and provide a guarantee of confidentiality, but their block oriented structure and implementation costs demand high resources, which can be heavy for low power, resource constrained IoT devices. Based on this fact, a need for lightweight, bit/stream based ciphers and techniques that guarantee confidentiality are required for secure data transfer.
+
+In this work we present XenoCipher, a hybrid, layered encryption pipeline designed specifically for IoT telemetry. XenoCipher operates at bit level, and is composed of 3 techniques: an LFSR based stream cipher - for low cost cipher generation, chaotic map based entropy generation - using a Tinkerbell generator for nonlinearity and diffusion, and an advanced transposition level - to add bit level permutation.
+
+To handle keys properly against future quantum adversaries, XenoCipher uses a lattice based, post-quantum key exchange mechanism to generate and share session master keys. This exchanged master key is then used to derive per-packet nonces and per-recipe subkeys. The choice of NTRU provides a rigid post-quantum key exchange keeping the keys used for handshake secure and resource efficient.
+
+A central feature of XenoCipher is the Zero trust mode (ZTM) - an optional, higher cost operating mode, which enables adaptive recipe switching. ZTM continously monitors live heuristics (device metrics, anamoly thresholds and environmental signals) and, when an attack pattern is detected, it automatically switches to an alternative recipe, to maximize resistance and protect the data and device. There are overall 5 recipes in the ZTM, which are used when a particular attack pattern is detected. This layered approach transitions from the low cost encryption to high alrt, adaptive defenses that consume comparatively more CPU and memory only when required.
+
+We have evaluated XenoCipher on ESP32 microcontroller, and found that for telemetry packects the "salsa-light" recipe achieves comparatively lower CPU and RAM usage maintaining an acceptable throughput. While on the other hand, "full-stack" recipe increases entropy and randomness at the cost of high CPU usage, a tradeoff that ZTM is designed to manage automatically. Then we highlight: strict master key and nonce handling - single use nonces / per-packet counters and careful key derivation, misuse of nonce or master key management leads to decryption failures and severe security weakness.
+
+This paper makes three main contributions:
+1. The design and implementation of XenoCipher, a lightweight, bit level hybrid cipher pipeline for IoT telemetry.
+2. The design and integration of adaptive zero trust mode (ZTM) that automatically switches encryption recipes based on live heuristics.
+3. An experimental evaluation of XenoCipher on IoT hardware showing resource/throughput tradeoffs across recipes, and operational guidance for nonce and master key management to avoid decryption errors and replay attacks.
+
+
+Related Works:
+--------------
+
+The advances in post-quantum cryptography have significantly fueled research in the domain of IoT security. The work presented by Cruz-Piris et al.~\cite{cruz2025} examined and validated the challenges associated with migrating to post-quantum cryptographic schemes in large-scale IoT networks, highlighting the need for adaptable and efficient security cipher suites capable of addressing these challenges. Lopez et al.~\cite{lopez2025} evaluated NIST-standardized post-quantum cryptographic algorithms on Raspberry Pi platforms, providing critical performance benchmarks that inform the implementation of XenoCipher’s NTRU-based key exchange mechanism on low-power microcontrollers. 
+
+Nielsen et al.~\cite{nielsen2025} demonstrated the effective use of digital signatures in embedded systems; XenoCipher draws direct inspiration from this work in the design of its HMAC-based authentication mechanism. Mahdi and Taherkhani~\cite{mahdi2025} discussed optimization and fine-tuning strategies for post-quantum cryptographic algorithms in multi-layer architectures, which are relevant to XenoCipher’s layered encryption pipeline. Xiong et al.~\cite{xiong2025} presented quantum-resistant security approaches for smart grid infrastructures, motivating the adaptive recipe-switching methodology adopted in XenoCipher. 
+
+Liu et al.~\cite{liu2024} provided a comprehensive survey of post-quantum cryptographic optimization techniques aimed at lightweight IoT systems, identifying gaps that XenoCipher addresses through deterministic and cross-platform implementations. Hanna et al.~\cite{hanna2025} detailed authentication mechanisms for 5G-enabled IoT ecosystems, contextualizing XenoCipher’s replay protection and secure authentication design. Lee et al.~\cite{lee2024} analyzed side-channel vulnerabilities in lattice-based cryptographic systems, influencing XenoCipher’s emphasis on constant-time operations and secure key management practices. 
+
+Wang et al.~\cite{wang2023} presented performance benchmarks for post-quantum TLS on resource-constrained devices, which are used to validate XenoCipher’s real-time communication efficiency. Finally, Ramachandran et al.~\cite{ramachandran2024} proposed scalable VPN tunnel designs for IoT environments, aligning with XenoCipher’s secure channel establishment strategy through NTRU-based key encapsulation.
+
+
+Methodology:
+------------
+
+XenoCipher is built as a layered pipeline for telemetry, where each packet is processed by a sequence of bit-level transformations selected by a recipe. A recipe specifies: which sequence of encryption techniques run, and in what order. The techniques are: an LFSR-based stream stage (lightweight keystream), a chaotic map stage (Tinkerbell maps) for diffusion and nonlinearity, and a low-level transposition stage for bit permutation. Inorder to keep the master key a secret, and protect it against quantum adversaries, the device and server perform a post-quantum handshake (NTRU) to derive master key value to the server. That master key seeds per-recipe subkeys and per-packet nonces. 	
+
+
+A. Handshake and Master key Derivation:
+
+When the IoT device is booted (ESP32), it create a local entropy and generates a 32-byte master key. The device encpasulates MK under the servers NTRU public key, and transmits the encapsulated packet to the server. Server then decapsulates both master key and data. The implementation details of encapsulation/decapsulation are in ntru.cpp file,
+
+- Encrypt the plaintext message using the public key `h`
+
+function NTRU_Encrypt(message_poly m, public_key_poly h) -> ciphertext_poly e
+    #  Generate a fresh random ternary polynomial r (ephemeral secret)
+    r = RandomTernaryPolynomial(d = NTRU_D)
+
+    #  Compute the ciphertext component: e = r * h
+    e = PolynomialMultiply(r, h)
+
+    #  Add the plaintext polynomial m (mod Q) to obtain final ciphertext
+    for i from 0 to NTRU_N‑1 do
+        e.coeffs[i] = (e.coeffs[i] + m.coeffs[i]) mod NTRU_Q
+    end for
+
+    return e
+end function
+
+- Recovers the original master key from the received ciphertext.
+
+function NTRU_Decrypt(ciphertext_poly e, private_key_poly f) -> recovered_message_poly m
+    #  Compute the intermediate product a = e * f
+    a = PolynomialMultiply(e, f)
+
+    #  Reduce each coefficient modulo the small modulus P
+    for i from 0 to NTRU_N‑1 do
+        m.coeffs[i] = a.coeffs[i] mod NTRU_P
+    end for
+
+    return m
+end function
+
+The HKDF splits the MK into domain specific subkeys: HMAC key, LFSR seed, Tinkerbell parameters, tranposition seed. The HKDF function Derives the suite of following sub‑keys and it is implemented  in 'crypto_kdf.cpp' file,
+
+Pseudocode – per‑packet sub‑key derivation:
+
+function derive_packet_subkeys(master_key, nonce):
+    # 1. Build HKDF salt/info = label || nonce (big‑endian)
+    LABEL = "xenocipher-message-keys-v1"
+    context = LABEL + uint32_to_be_bytes(nonce)
+
+    # 2. Extract step – use the long‑term HMAC key (derived from master_key)
+    #    as the input key and a fixed project‑wide salt.
+    PRK = HKDF_Extract(salt = KDF_SALT_COMMON,
+                       ikm  = master_key.hmac_key)
+
+    # 3. Expand step – derive 36 bytes of key material:
+    #    4 bytes LFSR seed | 16 bytes Tinkerbell key | 16 bytes Transposition key
+    OKM = HKDF_Expand(prk   = PRK,
+                      info  = context,
+                      outlen = 36)
+
+    # 4. Split the output
+    lfsr_seed        = bytes_to_uint32_be(OKM[0:4])
+    tinkerbell_key   = OKM[4:20]   # 16 bytes
+    transposition_key = OKM[20:36] # 16 bytes
+
+    # 5. Return the per‑packet sub‑keys
+    return {
+        lfsr_seed,
+        tinkerbell_key,
+        transposition_key
+    }
+
+
+B. Nonce, Anti-Replay and HMAC
+
+A nonce is an unique number that is stored in device's volatile memory. It is given as input to the HKDF which ensures that session keys generated for every message are unique even if the same master secret is used in a session. The nonce is included in the packet header and sent during transmission. HMAC is calculated over the header, packet and the nonce, it is then trimmed to 16 bytes so that the network bandwidth reduces during transmission. The receiver verifies message integrity by calculating and comparing the HMAC on the received message. he would also check the received nonce against a sliding window, if it is not in the window then the message is rejected to prevent replay. If the above mentioned steps are executed properly then it would result in decreased decryption failures and replay attacks, if not then it would cause authentication failures and successful replay attacks. Here is a psuedocode implementation from the server code showing nonce save and increment,
+
+# Initialise tracker (once at startup)
+function nonce_tracker_init(t):
+    lock(t.mutex)
+    t.used.clear()
+    t.startup = now_ms()
+    log_info("Nonce tracker cleared")
+
+# Validate an incoming nonce
+function nonce_tracker_validate(t, n) -> bool:
+    lock(t.mutex)
+    if n == 1:                     # first packet special case
+        log_debug("Allowing nonce 1")
+        return true
+    if n in t.used:                # replay detected
+        log_warn("Nonce " + str(n) + " reused")
+        return false
+    return true
+
+# Mark a nonce as consumed (after successful HMAC & decryption)
+function nonce_tracker_mark_used(t, n):
+    lock(t.mutex)
+    if n == 0: return
+    t.used.insert(n)
+    log_debug("Nonce " + str(n) + " marked used")
+
+# Usage in the send‑retry loop (server/main.cpp)
+saved   = gDeviceNonceTracker.lastNonce          # keep current value
+nonce   = nonce_tracker_get_next(&gDeviceNonceTracker)  # increment
+Serial.printf("[RETRY] nonce %u (saved %u)\n", nonce, saved)
+
+if transmission_successful:
+    gDeviceNonceTracker.lastNonce = nonce      # commit
+else:
+    gDeviceNonceTracker.lastNonce = saved      # rollback
+
+
+C. Packet construction and order of transformations:
+
+The encypted packet has the following structure 
+packet= header || nonce || C(.) || HMAC 
+where C(.) is the layered encryption pipeline of algorithms used in the current recipe chosen. The recipe specifies the set of algorithms as well as the order in which they are executed.
+Fetching of recipe and applying its algorithm to the sensitive data was implemented in adaptive_switchboard.cpp. The algorithms are selected based on heuristics.json
+
+void AdaptiveSwitchboard::applyRecipe(Packet &pkt) {
+    const Recipe &r = getActiveRecipe();
+    for (auto alg : r.algorithms) {
+        applyAlgorithm(alg, pkt);
+    }
+}
+The recipes chosen for the pipeline is applied during both encryption and decryption stages identically.
+the same pipeline is applied in reverse order to perform decryption, there is no separate decryption pipeline for decrypting the message
+
+D. Adaptive Switching (ZTM):
+
+When the mode is switched to ZTM, the live telemetry and environment metrics is continuously eveluated, using the HeuristicsManager made from the ranges in heuristics.json file. Each heuristic entry consists of recipe_switch.target_recipe (target recipe), and contains the following parameters,
+1. CD - cooldown seconds after a switch
+2. MaxS/h – maximum number of recipe switches allowed per unit time.
+3. Conf - required aggregated confidence (0 = 0 %, 1 = 100 %).
+
+These parameters were determined by,
+1. CD - cooldown durations were selected as a multiple of the measured telemetry stabilization time, ensuring that the system stays in a selected mode, long enough for metrics to settle into a predictable pattern, while preventing rapid mode changes caused by breif random glitches or  triggering.
+2. MaxS/h - it restricts the system to change recipes, even when theoretically the system can, and only allowed after a cooldown timing. 
+3. Conf - confidence thresholds were selected by measuring the maximum confidence produced during benign operation, ensuring that only statistically significant deviations trigger adaptive switching.
+
+When the heuristic module calls a recipe switch, the AdaptiveSwitchBoard atomically stops normal mode encryption (which uses the trio to encrypt the data), and activates the selected ZTM recipe, and directs the subsequent packets through the new pipeline.
+
+function manual_switch_recipe(newRecipe):
+    // 1. Validate the requested recipe name exists
+    if newRecipe not in RECIPES:
+        log_error("Invalid recipe: " + newRecipe)
+        return false
+
+    // 2. Acquire the global adaptive‑switchboard lock
+    lock(AdaptiveSwitchboard::mtx)
+
+    // 3. Update the shared state
+    AdaptiveSwitchboard::currentRecipe = newRecipe
+    AdaptiveSwitchboard::lastSwitchTime = now_ms()
+
+    // 4. Reset any per‑heuristic cooldown counters (optional)
+    for each heuristic in HeuristicsManager:
+        heuristic.lastSwitch = 0
+
+    // 5. Broadcast the change to all connected clients
+    EventBus::broadcast({
+        "type": "recipe_switch",
+        "recipe": newRecipe,
+        "timestamp": AdaptiveSwitchboard::lastSwitchTime
+    })
+
+    unlock(AdaptiveSwitchboard::mtx)
+    log_info("Manually switched to recipe " + newRecipe)
+    return true
+
+if request.path == "/admin/switch_recipe":
+    desired = request.query["recipe"]          // e.g. "FULL_STACK"
+    success = manual_switch_recipe(desired)
+    respond( success ? 200 : 400, success ? "OK" : "Invalid recipe" )
+
+F. Layered Composition of LFSR, Tinkerbell, and Transposition
+
+
+The first layer is composed of LFSR(Linear feedback shift register). Seed for the LFSR is a subkey which is derived from the master key. It generates a pseudo-random sequence of keystream which is at byte-level using the seed value. XOR operations is performed between the plaintext and the generated keystream. As a result the first layer ciphertext is generated. The whole operation executes using minimal CPU power and low memory overhead making it suitable for IOT devices
+
+Pseudocode:
+	Algorithm LFSR_XOR_Transform
+Input: buffer[0 … len−1], seed
+Output: transformed buffer
+
+1. Initialize LFSR with seed
+2. for i ← 0 to len − 1 do
+3.     keystream_byte ← LFSR_NextByte()
+4.     buffer[i] ← buffer[i] XOR keystream_byte
+5. end for
+6. return buffer
+
+
+The second layer is the Chaotic keystream mixing, it brings non-linearity in the code by eliminating the linear artifacts of LFSR. Again the subkey is derived from the masterkey. the chaotic map is initialized using parameters obtained from the sub key and the nonce. The keystream generated from chatoic map is XORed with the cipher text obtained from LFSR to obtain the second layer cipher.
+
+Algorithm TINKERBELL_XOR_Transform
+Input: buffer[0 … len−1], key, nonce
+Output: transformed buffer
+
+1. Initialize Tinkerbell generator with key and nonce
+2. for i ← 0 to len − 1 do
+3.     keystream_byte ← Tinkerbell_NextByte()
+4.     buffer[i] ← buffer[i] XOR keystream_byte
+5. end for
+6. return buffer
+
+
+The third layer is the final stage of the pipeline, it performs a block-level transposition over the input ciphertext arranged in a grid. A pseudo-random permuatation is produced using a PRNG whose seed value is obtained from the subkey for the transposition. This stage disturbs the spatitial locality and removes statistical patterns that remains even after keystream mixing, further strengthening diffusion
+
+
+Algorithm TRANSPOSITION_Transform
+Input: buffer[0 … len−1], seed
+Output: permuted buffer
+
+1. Generate a deterministic permutation array perm[0 … len−1] using seed
+2. for i ← 0 to len − 1 do
+3.     temp[i] ← buffer[perm[i]]   // apply permutation
+4. end for
+5. for i ← 0 to len − 1 do
+6.     buffer[i] ← temp[i]          // copy back to original buffer
+7. end for
+8. return buffer
+
+
+The layered transformation is only active in the normal pipeline. When ZTM is activated the inclusion of these algorithms differ. As mentioned in previous sections each recipe specifies which stages are enabled and the sequence in which they are applied.
+
+Results:
+--------
+
+XenoCipher was eveluated on an ESP32 microcontroller platform, inorder to reflect a realistic IoT platform deployment constraints. All algorithms were executed on identical plaintext sizes, which were representing healthcare telemetry packets. Benchamarks were conducted for the following techniques,
+ - XenoCipher (normal mode)
+ - XenoCipher (ZTM)
+ - AES (symmetric block cipher)
+ - RSA (public-key cryptography)
+ - ECC (elliptic curve cryptography)
+Metrics collected include - encryption time, decryption time, throughput, initial heap memory usage, ciphertext randomness. Each benchmark was repeated multiple times to account for execution difference, and average values were used for comparison.
+
+Performance Comparison with Standard Cryptographic Algorithms -,
+XenoCipher - AES:
+AES achieved the highest throughput, and lowest encryption latency among all tested algorithms. However, its performance comes at the cost of fixed block processing and larger key sizes. While suitable for general systems, AES remains comparatively heavy for constrained IoT devices that transmit small, frequent packets.
+XenoCipher - RSA:
+RSA showed the highest computational cost. Encryption and decryption times were typically higher than all other methods, confirming that RSA is impractical for real-time telemetry encryption on embedded devices. Thus, the decision to validate RSA for data confidentiality must be avoided.
+XenoCipher - ECC:
+ECC had low computation time compared to RSA, but it still incurred latency and memory overhead. ECC operations were feasible for session setup, but unsuitable for per-packet encryption.
+
+XenoCipher Normal Mode Evaluation:
+In normal mode, XenoCipher has a fixed pipeline consisting of:
+LFSR-based stream cipher
+Tinkerbell chaotic map
+Bit level transposition
+
+This combination demonstrated stable encryptions and decryptions across all iterations. Resource usage remained within safe limits for ESP32 devices, and throughput was sufficient for healthcare telemetry rates.
+Compared to AES, normal-mode XenoCipher consumed more initial heap memory and avoided block padding overhead. The bit-level processing pipeline proved particularly effective for small payloads.
+
+ZTM Mode and Adaptive Recipe Behavior:
+
+ZTM introduces adaptive encryption recipes, that trade computational cost for security strength.
+Key observations include:
+Salsa-Light recipe showed the lowest CPU and memory usage among ZTM configurations while maintaining acceptable randomness and integrity. This recipe is suitable during detected resource stress conditions.
+Full-Stack recipe significantly encryption complexity and ciphertext entropy, but required substantially more CPU cycles. This confirms that full-stack operation is not suitable to be running in default mode, and should only be activated under active threat conditions.
+Chaos-Only and Stream-Focus recipes occupied intermediate positions, offering balanced trade-offs between security strength and performance.
+The adaptive switching mechanism successfully transitioned between recipes without packet loss when triggered by heuristic threshold violations. This validates the feasibility of real-time cryptographic adaptation on embedded hardware.
+
+Heuristics-Driven Switching Effectiveness:
+
+Heuristic monitoring enabled early detection of anomalous behavior, such as replay attempts, integrity failures, or abnormal traffic patterns. When ZTM was active, these detections resulted in automatic recipe switching.
+A key design outcome is that, adaptive switching is not active in normal mode, which prevents unnecessary computational overhead. Instead, the system alerts the user and recommends transitioning to ZTM, protecting efficiency under benign conditions.
+This design reflects a zero-trust philosophy: security escalation is conditional, not compulsory.
+
+Key and Nonce Management Observations:
+
+Experimental results highlighted the critical role of strict key and nonce handling. When per-packet nonces or counters were reused, decryption failures and data integrity mismatches occurred. Proper nonce incrementation, and master key derived subkeys eliminated these failures.
+This confirms that XenoCipher’s security depends not only on algorithm selection, but also on disciplined operational practices.
+
+Summary:
+The experimental evaluation demonstrates that XenoCipher fills a practical gap between heavyweight cryptography, and insecure lightweight techniques. While it does not outperform AES in raw throughput, it offers meaningful advantages in flexibility, adaptability, and suitability for constrained IoT environments.
+
+Limitations:
+------------
+
+Despite the advantages it provides in resource-constrained IoT telemetry, XenoCipher has several limitations that must be acknowledged.
+First, it is not intended to replace well established, and standardized cryptographic algorithms like AES or RSA in general purpose computing. As XenoCiphers design is optimized for Iot devices. 
+Second, ZTM introduces additional computational overhead, due to adaptive recipe switching. As observed in experimental evaluation on ESP32 platform, high security recipes such as full-stack significantly increase the CPU overhead and latency, but keeps system operational. This computation is what grants Xenocipher a shanon entropy of around 5.3 (around 5.1 for AES). While this overhead is acceptable during active attack, ZTM is not suitable for continuous operation. Thus, in ZTM Xenocipher 
+Third, Xenociphers security is highly dependent on strict MK and nonce management. Improper nonce reuse, incorrect counter synchronization or faulty key derivation can lead to decryption failures. As the system enforces per packet nonces, counters and HMAC validation, this causes a slight increase in memory demand for xenocipher to begin its operations.
+Finally, even though other benchmarks provide favorable performance security trade-offs, XenoCipher has not undergone any formal cryptanalysis comparable to standardized algorithms. Thus its security claims are therefore based on experiments (by running it on ESP32), and architectural in nature. 

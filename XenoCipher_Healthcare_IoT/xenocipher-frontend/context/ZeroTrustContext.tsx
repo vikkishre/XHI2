@@ -218,7 +218,7 @@ export function ZeroTrustProvider({ children }: ZeroTrustProviderProps) {
     sendMessage({
       type: 'adaptive_switch_request',
       mode: 'ztm',
-      recipe: recipe.toLowerCase()
+      recipe: recipe.toUpperCase()  // Server expects uppercase: CHAOS_ONLY, SALSA_LIGHT, etc.
     })
 
     addEventLog({
@@ -406,16 +406,35 @@ export function ZeroTrustProvider({ children }: ZeroTrustProviderProps) {
         }
         break
 
-      case 'ztm_status': {
+      case 'ztm_status':
+      case 'ztm_status_update':
+      case 'active_recipe_updated': {
         // ESP32 periodic/current status (source of truth)
-        const enabled = !!data.ztmEnabled
+        // Treat any of these messages as authoritative control-plane status
+        const enabled = data.active !== undefined ? !!data.active : !!data.ztmEnabled
         const r = (data.currentRecipe || data.recipe) as string | undefined
         if (enabled) {
           setIsZeroTrustMode(true)
           if (r) {
             const upper = String(r).toUpperCase()
             if (['FULL_STACK', 'CHACHA_HEAVY', 'SALSA_LIGHT', 'CHAOS_ONLY', 'STREAM_FOCUS'].includes(upper)) {
-              setActiveRecipe(upper as ZTMRecipeKey)
+              // If recipe actually changed, log it as a committed switch
+              setActiveRecipe(prev => {
+                if (prev !== upper) {
+                  addEventLog({
+                    type: 'recipe_switch',
+                    message: `Recipe committed: ${prev} → ${upper}`,
+                    source: 'server',
+                    details: {
+                      epoch: data.epoch,
+                      reason: data.lastSwitchReason
+                    }
+                  })
+                  setLastSwitchReason(data.lastSwitchReason || `Switched to ${upper}`)
+                  setLastSwitchTime(Date.now())
+                }
+                return upper as ZTMRecipeKey
+              })
               setPendingRecipe(null)
             }
           }

@@ -25,6 +25,7 @@
 #include "../lib/Tinkerbell/include/tinkerbell.h"
 #include "../lib/Transposition/include/transposition.h"
 #include "../lib/ChaCha20/include/chacha20_impl.h"
+#include "../lib/Heuristics_Manager/include/heuristics_manager.h"
 #include "../lib/Salsa20/include/salsa20_impl.h"
 
 // ZTM Handlers
@@ -599,13 +600,39 @@ std::string pipelineDecryptPacketWithIntermediates(
 
     ZTMRecipe recipe = ZTMRecipe::CHAOS_ONLY;
     if (hasRecipeId) {
-        if (recipeIdWire >= 1 && recipeIdWire <= 5)
+        // Wire mapping: 1=FULL_STACK 2=CHACHA_HEAVY 3=SALSA_LIGHT 4=CHAOS_ONLY 5=STREAM_FOCUS
+        if (recipeIdWire >= 1 && recipeIdWire <= 5) {
             recipe = static_cast<ZTMRecipe>(recipeIdWire - 1);  // 1->FULL_STACK, ..., 5->STREAM_FOCUS
+        } else {
+            log_error("FATAL ZTM desync: invalid recipeIdWire=" + std::to_string((int)recipeIdWire));
+            adaptive_monitor_update_decrypt_failure(&gAdaptiveMonitor);
+            return "";
+        }
         std::cout << "[SERVER][ZTM] Received 0x82 packet recipeId=" << (int)recipeIdWire
                   << " -> " << recipeToString(recipe) << std::endl;
     } else if (isZTMPacket) {
-        recipe = static_cast<ZTMRecipe>(packetData[12]);
-        std::cout << "[SERVER][ZTM] Received 0xC1 packet recipe: " << recipeToString(recipe) << std::endl;
+        // New protocol requires 0x82 with explicit recipeId; 0xC1/implicit recipe is no longer accepted.
+        log_error("FATAL ZTM desync: ZTM packet without explicit recipeId (version=0x" +
+                  bytesToHex(&version, 1) +
+                  "). Device must send VERSION_RECIPE_ID (0x82) with recipeId.");
+        adaptive_monitor_update_decrypt_failure(&gAdaptiveMonitor);
+        return "";
+    }
+
+    // Enforce control-plane / data-plane invariants for ZTM packets.
+    if (isZTMPacket) {
+        ZTMStateManager* ztm = ZTMStateManager::getInstance();
+        std::string packetRecipeName = recipeToString(recipe);
+        std::string serverRecipeName = ztm->getActiveRecipe();
+
+        if (packetRecipeName != serverRecipeName) {
+            log_error("FATAL ZTM desync: packet.recipeId=" + std::to_string((int)recipeIdWire) +
+                      " (" + packetRecipeName + ") does not match server.activeRecipe=" +
+                      serverRecipeName);
+            adaptive_monitor_update_decrypt_failure(&gAdaptiveMonitor);
+            // Do NOT attempt decryption with a mismatched recipe.
+            return "";
+        }
     }
 
     // Validate nonce - FIXED: Allow nonce 1 for initial communication
@@ -1121,6 +1148,27 @@ void metricsThreadFunction() {
                 ", HMAC failures: " + std::to_string(metrics->hmac_failures) +
                 ", Replay attempts: " + std::to_string(metrics->replay_attempts) +
                 ", Requests: " + std::to_string(metrics->requests_per_minute));
+
+        // Push live security metrics to frontend/logs on a regular cadence
+        broadcastSecurityUpdate();
+
+        // Bridge live security metrics into ZTM heuristics engine so that
+        // adaptive switching is always driven by current threat levels.
+        ZTMStateManager* ztm = ZTMStateManager::getInstance();
+        if (ztm->getIsActive()) {
+            nlohmann::json values = {
+                {"hmacFailures", metrics->hmac_failures},
+                {"decryptFailures", metrics->decrypt_failures},
+                {"replayAttempts", metrics->replay_attempts},
+                {"malformedPackets", 0},
+                {"timingAnomalies", 0}
+            };
+            ztm->simulateHeuristics(values);
+            std::string autoRecipe = ztm->evaluateAndSwitch();
+            if (!autoRecipe.empty()) {
+                log_info("[ZTM][ADAPTIVE] Auto switch proposed based on live metrics → " + autoRecipe);
+            }
+        }
     }
 }
 
@@ -1366,6 +1414,11 @@ int main() {
             handleCORS(req, res);
             return res;
         }
+        
+        // DIAGNOSTIC: Log full master key for comparison with ESP32
+        log_info("=== DECRYPTION ATTEMPT (Session #" + std::to_string(gSessionCounter) + ") ===");
+        log_info("Using Master Key: " + bytesToHex(gMasterKey.data(), 32));
+        log_info("Key received at timestamp: " + std::to_string(gMasterKeyTimestamp));
         
         try {
             // Parse request body

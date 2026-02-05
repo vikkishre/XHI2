@@ -1,0 +1,420 @@
+{
+  "metadata": {
+    "exportedAt": "2026-02-05T14:33:38.917Z",
+    "sessionStart": "2026-02-05T14:31:12.056Z",
+    "mode": "ZTM_ACTIVE",
+    "version": "1.0.0"
+  },
+  "configuration": {
+    "activeRecipe": "SALSA_LIGHT",
+    "lastSwitchReason": "Committed via switch_done"
+  },
+  "heuristics": {
+    "current": {
+      "latencyMs": 52,
+      "entropyAfter": 6.8,
+      "memoryPercent": 0.204,
+      "cpuPercent": 20,
+      "hmacFailures": 0,
+      "decryptFailures": 0,
+      "replayAttempts": 0,
+      "malformedPackets": 0,
+      "timingAnomalies": 0
+    },
+    "thresholds": {
+      "entropyMin": 7,
+      "latencyMax": 100,
+      "hmacFailuresMax": 10,
+      "decryptFailuresMax": 5,
+      "replayAttemptsMax": 3
+    }
+  },
+  "alerts": [
+    {
+      "type": "warning",
+      "message": "Entropy slightly below optimal threshold",
+      "attackType": "simulation",
+      "id": "alert-1770301741539-rrv56jma5",
+      "timestamp": 1770301741539,
+      "timestampISO": "2026-02-05T14:29:01.539Z"
+    }
+  ],
+  "eventLogs": [
+    {
+      "type": "health",
+      "message": "Data decrypted in 0.30ms",
+      "source": "server",
+      "details": {
+        "plaintextLength": 23
+      },
+      "id": "log-1770301704095-7bw8ye84u",
+      "timestamp": 1770301704095,
+      "timestampISO": "2026-02-05T14:28:24.095Z"
+    },
+    {
+      "type": "health",
+      "message": "Data decrypted in 0.35ms",
+      "source": "server",
+      "details": {
+        "plaintextLength": 23
+      },
+      "id": "log-1770301725208-drgttcjvx",
+      "timestamp": 1770301725208,
+      "timestampISO": "2026-02-05T14:28:45.208Z"
+    },
+    {
+      "type": "recipe_switch",
+      "message": "Zero Trust Mode activated with CHAOS_ONLY baseline",
+      "source": "ztm",
+      "details": {
+        "ephemeralIdentity": "ghost-red-trust-ghost"
+      },
+      "id": "log-1770301731830-k9khodq54",
+      "timestamp": 1770301731830,
+      "timestampISO": "2026-02-05T14:28:51.830Z"
+    },
+    {
+      "type": "success",
+      "message": "ZTM activation acknowledged (recipe=CHAOS_ONLY)",
+      "source": "server",
+      "id": "log-1770301731842-vudzshtk2",
+      "timestamp": 1770301731842,
+      "timestampISO": "2026-02-05T14:28:51.842Z"
+    },
+    {
+      "type": "health",
+      "message": "Data decrypted in 0.26ms",
+      "source": "server",
+      "details": {
+        "plaintextLength": 23
+      },
+      "id": "log-1770301735628-zx9tj56wp",
+      "timestamp": 1770301735628,
+      "timestampISO": "2026-02-05T14:28:55.628Z"
+    },
+    {
+      "type": "threat",
+      "message": "simulation: Entropy slightly below optimal threshold",
+      "source": "ztm",
+      "details": {},
+      "id": "log-1770301741539-7lj9kde1u",
+      "timestamp": 1770301741539,
+      "timestampISO": "2026-02-05T14:29:01.539Z"
+    },
+    {
+      "type": "info",
+      "source": "system",
+      "message": "[Dev] Simulated: Minor Entropy Drop",
+      "id": "log-1770301741539-daorq0var",
+      "timestamp": 1770301741539,
+      "timestampISO": "2026-02-05T14:29:01.539Z"
+    },
+    {
+      "type": "health",
+      "message": "Data decrypted in 0.32ms",
+      "source": "server",
+      "details": {
+        "plaintextLength": 23
+      },
+      "id": "log-1770301746254-28b3aqir6",
+      "timestamp": 1770301746254,
+      "timestampISO": "2026-02-05T14:29:06.254Z"
+    },
+    {
+      "type": "recipe_switch",
+      "message": "Recipe committed: CHAOS_ONLY → SALSA_LIGHT",
+      "source": "server",
+      "details": {
+        "epoch": 10,
+        "reason": "Committed via switch_done"
+      },
+      "id": "log-1770301756399-xh1qub425",
+      "timestamp": 1770301756399,
+      "timestampISO": "2026-02-05T14:29:16.399Z"
+    },
+    {
+      "type": "recipe_switch",
+      "message": "Recipe committed: CHAOS_ONLY → SALSA_LIGHT",
+      "source": "server",
+      "details": {
+        "epoch": 10,
+        "reason": "Committed via switch_done"
+      },
+      "id": "log-1770301756399-bmd68t5gx",
+      "timestamp": 1770301756399,
+      "timestampISO": "2026-02-05T14:29:16.399Z"
+    },
+    {
+      "type": "health",
+      "message": "Data decrypted in 0.28ms",
+      "source": "server",
+      "details": {
+        "plaintextLength": 23
+      },
+      "id": "log-1770301756725-8bq95ldxr",
+      "timestamp": 1770301756725,
+      "timestampISO": "2026-02-05T14:29:16.725Z"
+    },
+    {
+      "type": "health",
+      "message": "Data decrypted in 0.25ms",
+      "source": "server",
+      "details": {
+        "plaintextLength": 23
+      },
+      "id": "log-1770301785777-bvqzvl9so",
+      "timestamp": 1770301785777,
+      "timestampISO": "2026-02-05T14:29:45.777Z"
+    },
+    {
+      "type": "health",
+      "message": "Data decrypted in 0.22ms",
+      "source": "server",
+      "details": {
+        "plaintextLength": 23
+      },
+      "id": "log-1770301796301-oh5yikwj2",
+      "timestamp": 1770301796301,
+      "timestampISO": "2026-02-05T14:29:56.301Z"
+    },
+    {
+      "type": "health",
+      "message": "Data decrypted in 0.24ms",
+      "source": "server",
+      "details": {
+        "plaintextLength": 23
+      },
+      "id": "log-1770301806881-2buhxm0rb",
+      "timestamp": 1770301806881,
+      "timestampISO": "2026-02-05T14:30:06.881Z"
+    },
+    {
+      "type": "health",
+      "message": "Data decrypted in 0.23ms",
+      "source": "server",
+      "details": {
+        "plaintextLength": 23
+      },
+      "id": "log-1770301817352-flmoh7s6v",
+      "timestamp": 1770301817352,
+      "timestampISO": "2026-02-05T14:30:17.352Z"
+    },
+    {
+      "type": "health",
+      "message": "Data decrypted in 0.58ms",
+      "source": "server",
+      "details": {
+        "plaintextLength": 23
+      },
+      "id": "log-1770301830068-2rj05ouup",
+      "timestamp": 1770301830068,
+      "timestampISO": "2026-02-05T14:30:30.068Z"
+    },
+    {
+      "type": "info",
+      "source": "system",
+      "message": "[Dev] Metrics reset to baseline",
+      "id": "log-1770301834348-9be54otmu",
+      "timestamp": 1770301834348,
+      "timestampISO": "2026-02-05T14:30:34.348Z"
+    },
+    {
+      "type": "health",
+      "message": "Data decrypted in 0.25ms",
+      "source": "server",
+      "details": {
+        "plaintextLength": 23
+      },
+      "id": "log-1770301840729-9j0wweh21",
+      "timestamp": 1770301840729,
+      "timestampISO": "2026-02-05T14:30:40.729Z"
+    },
+    {
+      "type": "health",
+      "message": "Data decrypted in 0.25ms",
+      "source": "server",
+      "details": {
+        "plaintextLength": 23
+      },
+      "id": "log-1770301851249-hpm9p02q2",
+      "timestamp": 1770301851249,
+      "timestampISO": "2026-02-05T14:30:51.249Z"
+    },
+    {
+      "type": "recipe_switch",
+      "message": "Switch requested → CHAOS_ONLY: Manual switch from SALSA_LIGHT to CHAOS_ONLY",
+      "source": "ztm",
+      "details": {
+        "recipe": "CHAOS_ONLY",
+        "reason": "Manual switch from SALSA_LIGHT to CHAOS_ONLY",
+        "pending": true
+      },
+      "id": "log-1770301853033-u5susi3vg",
+      "timestamp": 1770301853033,
+      "timestampISO": "2026-02-05T14:30:53.033Z"
+    },
+    {
+      "type": "info",
+      "message": "Switch ack broadcast: mode=ztm recipe=CHAOS_ONLY success=true",
+      "source": "server",
+      "id": "log-1770301853070-t4lsr0qgw",
+      "timestamp": 1770301853070,
+      "timestampISO": "2026-02-05T14:30:53.070Z"
+    },
+    {
+      "type": "recipe_switch",
+      "message": "Recipe committed: SALSA_LIGHT → CHAOS_ONLY",
+      "source": "server",
+      "details": {
+        "epoch": 11,
+        "reason": "Committed via switch_done"
+      },
+      "id": "log-1770301861544-qgbd1ueal",
+      "timestamp": 1770301861544,
+      "timestampISO": "2026-02-05T14:31:01.544Z"
+    },
+    {
+      "type": "recipe_switch",
+      "message": "Recipe committed: SALSA_LIGHT → CHAOS_ONLY",
+      "source": "server",
+      "details": {
+        "epoch": 11,
+        "reason": "Committed via switch_done"
+      },
+      "id": "log-1770301861544-slv25fwhd",
+      "timestamp": 1770301861544,
+      "timestampISO": "2026-02-05T14:31:01.544Z"
+    },
+    {
+      "type": "health",
+      "message": "Health: HR=63 SPO2=95 Steps=904",
+      "source": "esp32",
+      "id": "log-1770301861847-x64wwcbuv",
+      "timestamp": 1770301861847,
+      "timestampISO": "2026-02-05T14:31:01.847Z"
+    },
+    {
+      "type": "health",
+      "message": "Data decrypted in 0.28ms",
+      "source": "server",
+      "details": {
+        "plaintextLength": 23
+      },
+      "id": "log-1770301861874-i59uceyru",
+      "timestamp": 1770301861874,
+      "timestampISO": "2026-02-05T14:31:01.874Z"
+    },
+    {
+      "type": "recipe_switch",
+      "message": "Recipe committed: CHAOS_ONLY → SALSA_LIGHT",
+      "source": "server",
+      "details": {
+        "epoch": 17,
+        "reason": "Committed via switch_done"
+      },
+      "id": "log-1770301872056-kdascf7mj",
+      "timestamp": 1770301872056,
+      "timestampISO": "2026-02-05T14:31:12.056Z"
+    },
+    {
+      "type": "recipe_switch",
+      "message": "Recipe committed: CHAOS_ONLY → SALSA_LIGHT",
+      "source": "server",
+      "details": {
+        "epoch": 17,
+        "reason": "Committed via switch_done"
+      },
+      "id": "log-1770301872056-px552icez",
+      "timestamp": 1770301872056,
+      "timestampISO": "2026-02-05T14:31:12.056Z"
+    },
+    {
+      "type": "health",
+      "message": "Data decrypted in 0.29ms",
+      "source": "server",
+      "details": {
+        "plaintextLength": 23
+      },
+      "id": "log-1770301872370-jmzlnmo0d",
+      "timestamp": 1770301872370,
+      "timestampISO": "2026-02-05T14:31:12.370Z"
+    },
+    {
+      "type": "info",
+      "source": "system",
+      "message": "[Dev] Metrics reset to baseline",
+      "id": "log-1770301888471-cicvyth39",
+      "timestamp": 1770301888471,
+      "timestampISO": "2026-02-05T14:31:28.471Z"
+    },
+    {
+      "type": "health",
+      "message": "Data decrypted in 0.25ms",
+      "source": "server",
+      "details": {
+        "plaintextLength": 24
+      },
+      "id": "log-1770301901631-0mdm5zju8",
+      "timestamp": 1770301901631,
+      "timestampISO": "2026-02-05T14:31:41.631Z"
+    },
+    {
+      "type": "health",
+      "message": "Data decrypted in 0.36ms",
+      "source": "server",
+      "details": {
+        "plaintextLength": 24
+      },
+      "id": "log-1770301912186-xk0ts5rbq",
+      "timestamp": 1770301912186,
+      "timestampISO": "2026-02-05T14:31:52.186Z"
+    },
+    {
+      "type": "health",
+      "message": "Health: HR=64 SPO2=95 Steps=1210",
+      "source": "esp32",
+      "id": "log-1770301922751-5m6qnrc7i",
+      "timestamp": 1770301922751,
+      "timestampISO": "2026-02-05T14:32:02.751Z"
+    },
+    {
+      "type": "health",
+      "message": "Data decrypted in 0.36ms",
+      "source": "server",
+      "details": {
+        "plaintextLength": 24
+      },
+      "id": "log-1770301922779-cnzuo27fm",
+      "timestamp": 1770301922779,
+      "timestampISO": "2026-02-05T14:32:02.779Z"
+    },
+    {
+      "type": "health",
+      "message": "Data decrypted in 0.28ms",
+      "source": "server",
+      "details": {
+        "plaintextLength": 24
+      },
+      "id": "log-1770301933358-s37duzihf",
+      "timestamp": 1770301933358,
+      "timestampISO": "2026-02-05T14:32:13.358Z"
+    },
+    {
+      "type": "health",
+      "message": "Data decrypted in 0.24ms",
+      "source": "server",
+      "details": {
+        "plaintextLength": 24
+      },
+      "id": "log-1770301943757-n17wmkqbo",
+      "timestamp": 1770301943757,
+      "timestampISO": "2026-02-05T14:32:23.757Z"
+    }
+  ],
+  "statistics": {
+    "totalAlerts": 1,
+    "criticalAlerts": 0,
+    "warningAlerts": 1,
+    "totalEvents": 35
+  }
+}

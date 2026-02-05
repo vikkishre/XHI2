@@ -311,6 +311,14 @@ bool should_attempt_send() {
         return false;
     }
     
+    // CRITICAL: Block health data packets during two-phase commit protocol phases 2 (ACK_SENT) and 3 (before COMMIT_RECEIVED)
+    // This prevents cryptographic desynchronization by ensuring no packets are sent with the OLD recipe
+    // while the server might be expecting a switch.
+    if (gSwitchState == SwitchState::PROPOSE_RECEIVED || gSwitchState == SwitchState::ACK_SENT) {
+        Serial.println("[RETRY] Recipe switch protocol in progress - pausing data packets");
+        return false;
+    }
+    
     return true;
 }
 
@@ -644,9 +652,19 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
           }
           
           if (epoch < gCurrentEpoch) {
-            Serial.printf("[PROPOSE_REJECT] stale epoch: propose=%u device=%u\n", epoch, gCurrentEpoch);
+            Serial.printf("[PROPOSE_REJECT] stale epoch: propose=%u device=%u\\n", epoch, gCurrentEpoch);
             sendSwitchNack(proposalId, "epoch_too_low", gCurrentEpoch);
             return;
+          }
+          
+          // CRITICAL FIX: Update epoch if server's epoch is higher
+          // This ensures nextTxNonce calculation uses the correct epoch for boundary check
+          if (epoch > gCurrentEpoch) {
+            Serial.printf("[EPOCH_UPDATE] Updating from %u to %u (from switch_propose)\\n", gCurrentEpoch, epoch);
+            gCurrentEpoch = epoch;
+            // Reset packet counter when epoch changes
+            gPacketCounter = 0;
+            gDeviceNonceTracker.lastNonce = 0;
           }
           
           if (gSwitchState != SwitchState::NORMAL && gPendingProposal.proposalId != proposalId) {
@@ -675,7 +693,7 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
           sendSwitchAck(proposalId, epoch, (uint32_t)gDeviceNonceTracker.lastNonce);
           gSwitchState = SwitchState::ACK_SENT;
           
-          Serial.printf("[PROPOSE_ACCEPT] proposalId=%s epoch=%u targetRecipe=%s\n", 
+          Serial.printf("[PROPOSE_ACCEPT] proposalId=%s epoch=%u targetRecipe=%s\\n", 
                         proposalId.c_str(), epoch, targetRecipe.c_str());
         }
         else if (msgType == "switch_commit") {
@@ -832,42 +850,10 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
           } else if (newMode == OperationalMode::ZTM) {
             Serial.println("[WebSocket] CONDITION FAILED: ZTM mode requested but gZTMEnabled=false");
             Serial.println("[WebSocket] Cannot switch to ZTM - not activated");
-            
-            DynamicJsonDocument ackDoc(256);
-            ackDoc["type"] = "adaptive_switch_acknowledged";
-            ackDoc["success"] = false;
-            ackDoc["error"] = "ZTM not activated";
-            ackDoc["timestamp"] = millis();
-            
-            String ackStr;
-            serializeJson(ackDoc, ackStr);
-            webSocket.sendTXT(ackStr);
-            return;
           }
           
-          // Apply mode change
-          gCurrentMode = newMode;
-          gModeChangePending = false;
-          saveZTMSettings();
-          
-          Serial.printf("[WebSocket] Mode switched: %s, Recipe: %s\n", 
-                       (newMode == OperationalMode::ZTM) ? "ZTM" : "NORMAL", recipe.c_str());
-          
-          // Acknowledge to server
-          DynamicJsonDocument ackDoc(256);
-          ackDoc["type"] = "adaptive_switch_acknowledged";
-          ackDoc["mode"] = mode;
-          ackDoc["recipe"] = recipe;
-          ackDoc["success"] = true;
-          ackDoc["deviceId"] = String((uint32_t)ESP.getEfuseMac(), HEX);
-          ackDoc["timestamp"] = millis();
-          
-          String ackStr;
-          serializeJson(ackDoc, ackStr);
-          webSocket.sendTXT(ackStr);
-          
           // Emit telemetry
-          sendWebSocketUpdate("mode_changed", 
+          sendWebSocketUpdate("mode_changed_pending", 
                             String("Mode: " + mode + ", Recipe: " + recipe).c_str());
         }
         else if (msgType == "recipe_update") {
@@ -892,29 +878,9 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
             else if (recipeUpper == "CHAOS_ONLY") newRecipe = ZTMRecipe::CHAOS_ONLY;
             else if (recipeUpper == "STREAM_FOCUS") newRecipe = ZTMRecipe::STREAM_FOCUS;
             
-            // Server-initiated switches don't activate manual override
-            ZTMRecipe oldRecipe = gCurrentRecipe;
-            gCurrentRecipe = newRecipe;
-            gLastRecipeSwitchTime = GET_TIME_MS();
-            saveZTMSettings();
+            Serial.println("[WebSocket] Waiting for switch_propose from server for updated recipe");
             
-            Serial.printf("[WebSocket] Recipe switched: %s -> %s\n", 
-                         recipeToString(oldRecipe).c_str(),
-                         recipeToString(newRecipe).c_str());
-            
-            // Acknowledge to server
-            DynamicJsonDocument ackDoc(256);
-            ackDoc["type"] = "recipe_update_acknowledged";
-            ackDoc["recipe"] = recipe;
-            ackDoc["success"] = true;
-            ackDoc["deviceId"] = String((uint32_t)ESP.getEfuseMac(), HEX);
-            ackDoc["timestamp"] = millis();
-            
-            String ackStr;
-            serializeJson(ackDoc, ackStr);
-            webSocket.sendTXT(ackStr);
-            
-            sendWebSocketUpdate("recipe_switched", 
+            sendWebSocketUpdate("recipe_update_pending", 
                               String("Recipe: " + recipe + ", Reason: " + reason).c_str());
           } else {
             Serial.println("[WebSocket] Recipe update ignored - ZTM not active");
@@ -1058,8 +1024,61 @@ static String computeHmacHex(const uint8_t* key, size_t keyLen, const String& ca
     return out;
 }
 
+// Helper function to ensure master key is loaded from NVS
+// The master key is cleared after initial handshake for security, but we need it for ZTM control messages
+static bool ensureMasterKeyLoaded() {
+    // Check if master key is all zeros
+    bool keyIsZero = true;
+    for (size_t i = 0; i < 32; ++i) {
+        if (gMasterKey[i] != 0) {
+            keyIsZero = false;
+            break;
+        }
+    }
+    
+    if (!keyIsZero) {
+        return true;  // Key is already loaded
+    }
+    
+    // Reload from NVS
+    Serial.println("[ZTM] Master key is zero - reloading from NVS");
+    nvs_handle_t handle;
+    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &handle);
+    if (err != ESP_OK) {
+        Serial.println("[ZTM] ERROR: Failed to open NVS for master key reload!");
+        return false;
+    }
+    
+    size_t required_size = 32;
+    err = nvs_get_blob(handle, "master_key", gMasterKey, &required_size);
+    nvs_close(handle);
+    
+    if (err != ESP_OK || required_size != 32) {
+        Serial.println("[ZTM] ERROR: Failed to reload master key from NVS!");
+        return false;
+    }
+    
+    Serial.println("[ZTM] Successfully reloaded master key from NVS");
+    return true;
+}
+
+
 static bool verifyPayloadHmac(JsonObject payload, const String& expectedSig) {
     String canonical = canonicalizePayload(payload);
+    
+    // Ensure master key is loaded from NVS
+    if (!ensureMasterKeyLoaded()) {
+        Serial.println("[ZTM] HMAC verification failed: could not load master key");
+        return false;
+    }
+    
+    // DIAGNOSTIC: Log master key used for verification
+    Serial.print("[ZTM] Master key (first 16 bytes): ");
+    for (size_t i = 0; i < 16 && i < 32; ++i) {
+        Serial.printf("%02X", gMasterKey[i]);
+    }
+    Serial.println();
+    
     String computed = computeHmacHex(gMasterKey, 32, canonical);
     Serial.printf("[ZTM] HMAC verify: canonical=%s\n", canonical.c_str());
     Serial.printf("[ZTM] HMAC verify: computed=%s expected=%s\n", computed.c_str(), expectedSig.c_str());
@@ -1086,6 +1105,13 @@ static void sendSwitchAck(const String& proposalId, uint32_t epoch, uint32_t las
     payload["ready"] = true;
     
     String canonical = canonicalizePayload(payload);
+    
+    // Ensure master key is loaded from NVS
+    if (!ensureMasterKeyLoaded()) {
+        Serial.println("[SWITCH] sendSwitchAck failed: could not load master key");
+        return;
+    }
+    
     String signature = computeHmacHex(gMasterKey, 32, canonical);
     if (signature.length() == 0) {
         Serial.println("[SWITCH] sendSwitchAck failed: HMAC computation failed");
@@ -1119,6 +1145,13 @@ static void sendSwitchNack(const String& proposalId, const String& reason, uint3
     payload["reason"] = reason;
     
     String canonical = canonicalizePayload(payload);
+    
+    // Ensure master key is loaded from NVS
+    if (!ensureMasterKeyLoaded()) {
+        Serial.println("[SWITCH] sendSwitchNack failed: could not load master key");
+        return;
+    }
+    
     String signature = computeHmacHex(gMasterKey, 32, canonical);
     if (signature.length() == 0) {
         Serial.println("[SWITCH] sendSwitchNack HMAC failed, sending without signature");
@@ -1153,6 +1186,13 @@ static void sendSwitchDone(const String& proposalId, uint64_t commitNonce, uint3
     payload["switchedAt"] = switchedAt;
     
     String canonical = canonicalizePayload(payload);
+    
+    // Ensure master key is loaded from NVS
+    if (!ensureMasterKeyLoaded()) {
+        Serial.println("[SWITCH] sendSwitchCommit failed: could not load master key");
+        return;
+    }
+    
     String signature = computeHmacHex(gMasterKey, 32, canonical);
     if (signature.length() == 0) {
         Serial.println("[SWITCH] sendSwitchDone failed: HMAC computation failed");
@@ -1183,6 +1223,10 @@ static void applyRecipe(const char* recipeName) {
 }
 
 static void applyRecipeIfCommitBoundary() {
+  // DIAGNOSTIC: Log current state
+  Serial.printf("[BOUNDARY_CHECK] SwitchState=%d PendingActive=%d CommitNonce=%llu\\n",
+                (int)gSwitchState, gPendingProposal.active, (unsigned long long)gPendingProposal.commitNonce);
+  
   if (gSwitchState == SwitchState::ACK_SENT && gPendingProposal.active) {
     if ((unsigned long)(millis() - gPendingProposal.commitWaitStartMs) > (unsigned long)COMMIT_TIMEOUT_MS) {
       Serial.println("[SWITCH] COMMIT_TIMEOUT — aborting pending proposalId=" + gPendingProposal.proposalId);
@@ -1191,9 +1235,19 @@ static void applyRecipeIfCommitBoundary() {
       return;
     }
   }
-  if (gSwitchState != SwitchState::COMMITTED_PENDING || !gPendingProposal.active) return;
+  if (gSwitchState != SwitchState::COMMITTED_PENDING || !gPendingProposal.active) {
+   Serial.printf("[BOUNDARY_CHECK] Not ready to apply: SwitchState=%d, PendingActive=%d\\n",
+                  (int)gSwitchState, gPendingProposal.active);
+    return;
+  }
   uint64_t nextTxNonce = ((uint64_t)gCurrentEpoch << 32) | (gPacketCounter + 1);
-  if (nextTxNonce < gPendingProposal.commitNonce) return;
+  Serial.printf("[BOUNDARY_CHECK] nextTxNonce=%llu commitNonce=%llu (epoch=%u packet=%u)\\n",
+                (unsigned long long)nextTxNonce, (unsigned long long)gPendingProposal.commitNonce,
+                gCurrentEpoch, gPacketCounter + 1);
+  if (nextTxNonce < gPendingProposal.commitNonce) {
+    Serial.println("[BOUNDARY_CHECK] Too early - waiting for commit boundary");
+    return;
+  }
   Serial.println("[SWITCH] commit boundary reached — applying recipe proposalId=" + gPendingProposal.proposalId);
   applyRecipe(recipeToString(gPendingProposal.targetRecipe).c_str());
   gLastCommitNonce = gPendingProposal.commitNonce;
@@ -1205,6 +1259,7 @@ static void applyRecipeIfCommitBoundary() {
   uint32_t ep = gPendingProposal.epoch;
   gPendingProposal.active = false;
   gSwitchState = SwitchState::NORMAL;
+  Serial.printf("[SWITCH] Protocol complete — returning to NORMAL state. Applied recipe at nonce: %llu\n", (unsigned long long)cn);
   sendSwitchDone(pid, cn, ep);
 }
 
@@ -2814,34 +2869,16 @@ static bool verifyPasskey(const String& passkey) {
 }
 
 static bool loadZTMSettings() {
-  nvs_handle_t handle;
-  esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &handle);
-  if (err != ESP_OK) {
-    Serial.println("[ZTM] Failed to open NVS for loading settings");
-    return false;
-  }
+  // CRITICAL FIX: ESP32 should ALWAYS start in NORMAL mode
+  // ZTM should only be activated when the server explicitly requests it
+  // This prevents mode desync when ESP32 reboots while server is in normal mode
   
-  uint8_t mode = 0;
-  uint8_t recipe = 0;
+  gCurrentMode = OperationalMode::NORMAL;
+  gZTMEnabled = false;
+  gCurrentRecipe = ZTMRecipe::CHAOS_ONLY;  // Default recipe if ZTM is activated later
   
-  err = nvs_get_u8(handle, NVS_ZTM_MODE_KEY, &mode);
-  if (err == ESP_OK) {
-    gCurrentMode = (mode == 1) ? OperationalMode::ZTM : OperationalMode::NORMAL;
-    gZTMEnabled = (mode == 1);
-  }
-  
-  err = nvs_get_u8(handle, NVS_ZTM_RECIPE_KEY, &recipe);
-  if (err == ESP_OK && recipe < 5) {
-    gCurrentRecipe = (ZTMRecipe)recipe;
-  }
-  
-  nvs_close(handle);
-  
-  if (gZTMEnabled) {
-    Serial.printf("[ZTM] Loaded settings: Mode=%s, Recipe=%s\n",
-                 (gCurrentMode == OperationalMode::ZTM) ? "ZTM" : "NORMAL",
-                 recipeToString(gCurrentRecipe).c_str());
-  }
+  Serial.println("[ZTM] Forced NORMAL mode on startup - waiting for server ZTM activation");
+  Serial.println("[ZTM] (Previous ZTM settings in NVS are ignored to prevent mode desync)");
   
   return true;
 }
